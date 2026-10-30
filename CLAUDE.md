@@ -6,8 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **配電盤上部を確認するロボットに測定機能を加えるソフトウェア**（2026-10-30 ユーザー決定）。
 走行系（th-system `../th-system`）・昇降機とカメラ（hve-system `../hve-system`）を使って自動での測定を目指し、各システムへの指示と情報の取得を行う。
-測定モードは**立会試験中の測定**と**自律測定**の 2 つ。**画面は走行系の画面を主とし、そこからカメラ・本システムへ移る**（全体に関わる判断）。
-何を測るかなど残りは未定（[Spec-open.md](docs/plan/spec/Spec-open.md) §2）。**推測で埋めない**（推測は次のセッションで別の推測になる）。
+測るのは**膜厚と板厚**で、**どちらも同じ操作**でできる。測定モードは**立会試験中の測定**と**自律測定**の 2 つ。**画面は走行系の画面を主とし、そこからカメラ・本システムへ移る**（全体に関わる判断）。
+測り方など残りは未定（[Spec-open.md](docs/plan/spec/Spec-open.md) §2）。**推測で埋めない**（推測は次のセッションで別の推測になる）。
 
 **2026-10-30 に、開発体制を th-system と同じにして立ち上げた**（文書の役割分担・herdr／orca ＋ codex／opencode による実装・受け入れ検査・git 運用）。
 手法は th-system が最も進んでいるので、**体制の改定は th-system の `CLAUDE.md`・`ImplementationPlan.md` §2 を手本にして取り込む**（自動では入らない）。
@@ -41,8 +41,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### th-system・hve-system との境界
 
-- **本システムは両方に指示を出し、情報を取る**（2026-10-30 ユーザー決定）。ただし**何を指示し何を取るかは未定**（[Spec-open.md](docs/plan/spec/Spec-open.md) `FK-A1`）で、
-  **hve-system の不変ルール `HD-1`（th-system と独立・連動なし）とぶつかる**（同 §1.1・`FK-A3`）。解決するまで、走行と昇降を連動させる設計・実装を持ち込まない。
+- **本システムは両方に指示を出し、情報を取る。走行の指示は本システムが出し、hve-system は走行を指示する権限を持たない**（2026-10-30 ユーザー決定。`FD-2`）。
+  hve-system の不変ルール `HD-1`（th-system と独立・連動なし）は**変えない**。走行と昇降を組み合わせる判断は本システムに置き、**hve-system と th-system を直接つなぐ設計を持ち込まない。**
+  何を指示し何を取るかは未定（[Spec-open.md](docs/plan/spec/Spec-open.md) `FK-A1`）。走行と昇降の排他の保証（`FK-X1`）が決まるまで、両方を動かす実装を入れない。
 - **相手側に要る変更は [Spec-open.md](docs/plan/spec/Spec-open.md) §1.2 に申し送りとして貯める。**
 - **th-system・hve-system のリポジトリは、ユーザーの指示があるときだけ編集する。**それぞれ別の正本と運用ルールを持つので、
   触るときはそのリポジトリの `CLAUDE.md` に従う（作業前の `git status`・自分のファイルだけステージ）。
