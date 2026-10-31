@@ -13,7 +13,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   **製品に触れるのは測定器だけ。**測定機構は昇降機に取り付いて一緒に上下し、測定器を前後に動かせる（左右は不可。クローラで合わせる）。
   機構の設計は未定で構成機器は変わりうるので、**機器名に依存したコード・試験を書かない**（案は [arm.md](docs/plan/arm.md)）。
 - 測定モードは**立会試験中の測定**（盤前で「測定」ボタン → 天面中央 1 点）と**自律測定**（配置図から盤を選ぶ → 自律移動 → 四隅＋中央の 5 点）。測る点は画像から推定する。
-- 画面は走行系の画面が主で、そこからカメラ・本システムへ移る（全体に関わる判断）。
+  **自律測定は準備なしで、起動のたびに地図を作り直す**（th-system の試験場内の動作とはほとんど別物。`FD-13`）。
+- 画面は走行系の画面が主で、そこからカメラ・本システムへ移る（全体に関わる判断）。本システムの画面は**別のポートだが th-system の中にいるような操作性**で、いつでも抜けられる。
 - 残りは未定（[Spec-open.md](docs/plan/spec/Spec-open.md) §2）。**推測で埋めない**（推測は次のセッションで別の推測になる）。
 
 **2026-10-30 に、開発体制を th-system と同じにして立ち上げた**（文書の役割分担・herdr／orca ＋ codex／opencode による実装・受け入れ検査・git 運用）。
@@ -49,6 +50,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### 関連システム（th-system・hve-system・ss-system）との境界
 
 - **本システムは th-system・hve-system に指示を出し、情報を取る。走行の指示は本システムが出し、hve-system は走行を指示する権限を持たない**（2026-10-30 ユーザー決定。`FD-2`）。
+  **本システムは th-system に対して人と同等の権限を持つ**（2026-11-01 ユーザー決定。`FD-12`）。
   hve-system の不変ルール `HD-1`（th-system と独立・連動なし）は**変えない**。走行と昇降を組み合わせる判断は本システムに置き、**hve-system と th-system を直接つなぐ設計を持ち込まない。**
   何を指示し何を取るかは未定（[Spec-open.md](docs/plan/spec/Spec-open.md) `FK-A1`）。走行と昇降の排他の保証（`FK-X1`）が決まるまで、両方を動かす実装を入れない（ss-system が昇降させる場合も同じ）。
 - **画像認識は ss-system（別リポジトリ `../ss-system`）に置き、本システムはそこへ欲しい情報を渡す。その情報を得るためのカメラの操作は ss-system に任せる**（2026-10-31 ユーザー決定。`FD-9`・`FD-10`）。
@@ -57,6 +59,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   **ss-system が動かしている間は本システムから動かさない。気をつけるのは本システムで、ss-system 側の配慮に頼らない。**
 - **相手側に要る変更は [Spec-open.md](docs/plan/spec/Spec-open.md) §1.2 に申し送りとして貯める。**
 - **相手のリポジトリは本システムから直接編集しない（ユーザーの指示があるときを除く）。本システムの実装管理担当が、相手の実装管理担当へ指示として送る**（2026-10-31 ユーザー決定。手順は [ImplementationPlan.md](docs/plan/ImplementationPlan.md) §2.4）。
+  **相手側では毎回、ユーザーが指示を確認して続行承認を出してから進む**（2026-11-01 ユーザー決定）。
   直接触るときは、そのリポジトリの `CLAUDE.md` に従う（作業前の `git status`・自分のファイルだけステージ）。
 - 読むのは自由。**写さずにリンクする**（写しは先方が直ったときに古いまま残る）。
 
