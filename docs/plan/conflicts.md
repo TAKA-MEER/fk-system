@@ -37,4 +37,4 @@
 1. ~~ユーザーに決めてもらう~~（2026-11-01 済）
 2. ~~本システムの spec へ移し、相手への申し送りを直す~~（2026-11-01 済）
 3. ~~ss-system に関わる見解を ss-system に伝える~~（2026-11-01。ユーザーの許可で ss-system を直接編集）
-4. 申し送り（[Spec-open.md](spec/Spec-open.md) §1.2）を th-system・hve-system の実装管理担当へ送る（2026-11-01 送付）。**hve-system は反映済み**（`fc2e517`・`1e3eab4`）。th-system は続行承認待ち
+4. 申し送り（[Spec-open.md](spec/Spec-open.md) §1.2）を th-system・hve-system の実装管理担当へ送る（2026-11-01 送付）。**hve-system は反映済み**（`fc2e517`・`1e3eab4`）。**th-system も反映済み**（`75d5099`）。ただし th 側でユーザーが自律測定の入口と明示操作を変えた（メインメニューの「自律測定」→「許可する」）ので、本システムの `FD-12` を合わせるか要確認。th から本システムへの要求は [Spec-open.md](spec/Spec-open.md) §1.3
