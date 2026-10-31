@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **配電盤上部を確認するロボットに測定機能（膜厚・板厚）を加えるソフトウェア**（2026-10-30 ユーザー決定）。
 中身の正本は [Spec.md](docs/plan/spec/Spec.md)。ここにはコードを書くときに外せない要点だけ置く。
 
-- 走行系（th-system `../th-system`）・昇降機とカメラ（hve-system `../hve-system`）に指示を出し、情報を取る。画像認識は別リポジトリの ss-system（未作成）に要求する。
+- 走行系（th-system `../th-system`）・昇降機とカメラ（hve-system `../hve-system`）に指示を出し、情報を取る。画像認識は別リポジトリの ss-system（`../ss-system`）に要求する。
   **本システムは人の代わりに操作の判断の一部を行う**（目的地・経路再計算の指示は本システム、経路計画・走行制御・停止は th-system）。
 - 測定は測定器を**垂直に押し当てる**（まず天面）。測定器は**モックアップ**（概形と接触の検知だけ。値は「値を保存しました」で済ませる）。
   **製品に触れるのは測定器だけ。**機構の構成機器は変わりうるので、**機器名に依存したコード・試験を書かない**（案は [arm.md](docs/plan/arm.md)）。
@@ -50,7 +50,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **本システムは th-system・hve-system に指示を出し、情報を取る。走行の指示は本システムが出し、hve-system は走行を指示する権限を持たない**（2026-10-30 ユーザー決定。`FD-2`）。
   hve-system の不変ルール `HD-1`（th-system と独立・連動なし）は**変えない**。走行と昇降を組み合わせる判断は本システムに置き、**hve-system と th-system を直接つなぐ設計を持ち込まない。**
   何を指示し何を取るかは未定（[Spec-open.md](docs/plan/spec/Spec-open.md) `FK-A1`）。走行と昇降の排他の保証（`FK-X1`）が決まるまで、両方を動かす実装を入れない。
-- **画像認識は ss-system（別リポジトリ。未作成）に置き、本システムはそこへ情報を要求する**（2026-10-31 ユーザー決定。`FD-9`）。
+- **画像認識は ss-system（別リポジトリ `../ss-system`）に置き、本システムはそこへ情報を要求する**（2026-10-31 ユーザー決定。`FD-9`）。
 - **相手側に要る変更は [Spec-open.md](docs/plan/spec/Spec-open.md) §1.2 に申し送りとして貯める。**
 - **相手のリポジトリは本システムから直接編集しない（ユーザーの指示があるときを除く）。本システムの実装管理担当が、相手の実装管理担当へ指示として送る**（2026-10-31 ユーザー決定。手順は [ImplementationPlan.md](docs/plan/ImplementationPlan.md) §2.4）。
   直接触るときは、そのリポジトリの `CLAUDE.md` に従う（作業前の `git status`・自分のファイルだけステージ）。
@@ -64,7 +64,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **「実装して」と言われたら自分でコードを書かない。**ブリーフを実装エージェントに渡して投げる
   （手順・落とし穴は ImplementationPlan §2.1）。体数は固定しない。
   **まず codex に投げ、利用枠の上限が来たら opencode に切り替える**（th-system 2026-10-26 ユーザー決定に揃えた）。
-  codex は無料プランの 30 日枠で、使い切ると約 1 か月戻らない（**th-system・hve-system と枠を共有する**）。codex は `CLAUDE.md` ではなく `AGENTS.md` を読む（中身は「CLAUDE.md を読め」だけ）。
+  codex は無料プランの 30 日枠で、使い切ると約 1 か月戻らない（**th-system・hve-system・ss-system と枠を共有する**）。codex は `CLAUDE.md` ではなく `AGENTS.md` を読む（中身は「CLAUDE.md を読め」だけ）。
   **窓口は herdr と orca の 2 つ。いま開いている方を環境変数で見分けて使う**:
   `TERM_PROGRAM=Orca`／`ORCA_TERMINAL_HANDLE` があれば orca（`orca worktree create --setup skip --agent codex`。枠切れなら `--agent opencode`）、
   `HERDR_PANE_ID`／`HERDR_ENV` があれば herdr（`ImplementAgent` タブ・`herdr pane split`）。
