@@ -37,7 +37,7 @@ fk-system の**完成形の正本**。
 | --- | --- |
 | 対象・用語・目標・範囲 | [Spec.md](Spec.md) |
 | **何が決まっていないか** | [Spec-open.md](Spec-open.md) §2 |
-| 関連システム（th-system・hve-system）との関係 | [Spec-open.md](Spec-open.md) §1 |
+| 関連システム（th-system・hve-system・ss-system）との関係 | [Spec-open.md](Spec-open.md) §1 |
 | ノード名・ピン・作業パケット | [詳細設計書](../detailed/README.md) |
 | 実装の順番・進捗 | [ImplementationPlan.md](../ImplementationPlan.md) |
 | デモ特例で省略・バイパスしたままの事項 | [EXCEPTION-LEDGER.md](../EXCEPTION-LEDGER.md) |
