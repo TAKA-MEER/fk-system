@@ -114,4 +114,5 @@ th-system・hve-system で踏んだもののうち、同じ道具（herdr／orca
 - **orca の新しいターミナル（`worktree create`・`terminal create`・`split`）が `connected: false` のまま opencode が起動しないことがある**（hve-system 2026-10-15。opencode の自動更新の直後）。Orca を起動し直したら直った。`orca worktree rm` はすぐには消えず、`git worktree list` に少し残る（`git worktree prune` で片付く）。
 - **opencode の質問画面（選択肢つきの確認）は、ペインが低いと入力欄が画面外に出て、`herdr agent prompt` の文字が入らない**（hve-system 2026-09-28）。`herdr pane zoom <pane> --on` で広げ、`herdr pane read --source visible` で入力欄を確かめてから `herdr pane send-text` → `herdr pane send-keys <pane> Enter` で答える。終わったら `--off` で戻す。
 - **既に opencode が動いているペインに `herdr agent start` を打たない。**`start` はシェルプロンプト待ちを期待するため、動作中のセッションに文字列を打ち込んで壊す。`herdr agent rename` だけで登録する。
+- **別セッションへの `SendMessage` は、相手の許可モードがこちらと違うと相手側で保留になり、相手のユーザーが承認するまで届かない**（2026-11-01。orca で起動した th・hve は bypass だった）。保留の通知が来たら再送せず、ユーザーに相手のターミナルでの承認を頼む（ImplementationPlan §2.4）。
 - **`pkill -f <パターン>` は自分のシェルを殺すことがある**（パターンが自分のコマンドラインにマッチする。docker の中でもホストでも）。PID 指定で止める。

@@ -17,6 +17,7 @@
 | [`ImplementationPlan.md`](ImplementationPlan.md) | 実装の進め方と進み具合 | 進め方（§2）のみ確定 |
 | [`EXCEPTION-LEDGER.md`](EXCEPTION-LEDGER.md) | デモ特例で省略・バイパスした事項の台帳 | 空 |
 | [`arm.md`](arm.md) | 測定器を天面に押し当てる機構の案（検討メモ） | 案（2026-10-30） |
+| [`conflicts.md`](conflicts.md) | 関連システムとの衝突のうち、ユーザーに決めてもらうこと（相手の実装管理担当の見解は [`conflicts-th.md`](conflicts-th.md)・[`conflicts-hve.md`](conflicts-hve.md)） | 照会済み（2026-11-01） |
 
 新しく読むならまず `spec/README.md`。
 
