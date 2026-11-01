@@ -12,7 +12,7 @@
 
 | 完全設計書の ID | 詳細設計で要ること |
 | --- | --- |
-| `FK-A1`・`FK-A2`・`FK-A4` | 決まり次第、[DetailedDesign.md](DetailedDesign.md) §2 と [-names.md](DetailedDesign-names.md) §0 を書く |
+| `FK-A1`・`FK-A2` | 決まり次第、[DetailedDesign.md](DetailedDesign.md) §2 と [-names.md](DetailedDesign-names.md) §0 を書く |
 
 ## 3. レビュー指摘管理表
 

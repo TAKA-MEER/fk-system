@@ -30,7 +30,7 @@
 | 9 | ss-system がカメラの向きを知る手段 | **hve-system を改良し、ヨーの向きを測れるようにする**（方法は検討中） | [Spec-open.md](spec/Spec-open.md) §1.2・ss-system `SS-A2` |
 | 10 | 他システムでの指示の受け方 | **毎回、ユーザーが指示を確認した実装管理担当に続行承認を出す** | [ImplementationPlan.md](ImplementationPlan.md) §2.4 |
 
-残った問いは [Spec-open.md](spec/Spec-open.md) §2（`FK-U1`・`FK-U2`・`FK-V4`・`FK-V5`・`FK-X6`・`FK-X7` など）。
+残った問いは [Spec-open.md](spec/Spec-open.md) §2。`FK-U1`・`FK-U2`・`FK-X6` も同日にユーザーが決めた（[Spec-open.md](spec/Spec-open.md) §3）。
 
 ## 次にやること
 
