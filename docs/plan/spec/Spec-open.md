@@ -74,10 +74,10 @@ ID の付け方: 本システムの未確定事項は `FK-<分類><番号>`（th
 | th-system | **本システムの画面でも、th-system の非常停止が何にも覆われずに押せる**（th SD-3） | th-system [Spec-measure.md](../../../../th-system/docs/plan/spec/Spec-measure.md) §6 | **承認**（2026-11-01 ユーザー）。[Spec.md](Spec.md) §1.2 に反映。th-system にも記録済み（`6aee6f0`） |
 | th-system | **指示の種類に「中止」を足す**（今の目的地・指示を捨て、その場で止まって次の指示を待つ。th-system は指示を指示待ち `WAIT` でだけ受けるので、選び直すのに要る） | th `Spec-modes.md` `SM-3.1.2-131`・`-132` | **承認**（2026-11-01 ユーザー）。[Spec.md](Spec.md) §1.1.2 に反映。th-system にも記録済み（`6aee6f0`） |
 | th-system | `FK-X7` への th-system 側の案: 旋回の前に、角が描く円（外接半径 0.389 m）の中に障害物マップかスキャンの障害物があれば旋回せず、理由を返す | th `Spec-open.md` `O-a9` | **承認**（2026-11-01 ユーザー）。本システムの案として採る（`FK-X7`）。th-system でも決定（th `F-47`。`6aee6f0`） |
-| th-system | **立会試験中の測定を終えたら（測定機構を引いたら）、「測定を終えた」を th-system へ返す**（th-system の停止命令を解く合図） | th [Spec-onsite.md](../../../../th-system/docs/plan/spec/Spec-onsite.md) §7.2・th `SM-3.1.2-063` | **承認**（2026-11-01 ユーザー）。[Spec.md](Spec.md) §1.1.1 に反映 |
-| th-system | **本システムの画面で人が抜ける操作をしたら、「終了」の指示を th-system へ送る**（th-system をメインメニューへ戻す） | th `SM-3.1.2-135` | **承認**（2026-11-01 ユーザー）。[Spec.md](Spec.md) §1.1.2・§1.2 に反映 |
-| th-system | **盤前の停止位置は、盤面が機体の中心から 0.389 m 以上（機体の前面から約 0.11 m 以上）離れるように決める。**それより近いと、動き出す前の確認（角が描く円の中の障害物）に盤が入り、旋回も発進もできなくなる | th [Spec-measure.md](../../../../th-system/docs/plan/spec/Spec-measure.md) §4.4 | **承認**（2026-11-01 ユーザー）。[Spec.md](Spec.md) §1.1.2 に反映 |
-| th-system | **本システムの画面のヘッダーの非常停止は、th-system の画面の非常停止と同じ扱い**（送り続け、押した側でラッチする） | th [Spec-safety.md](../../../../th-system/docs/plan/spec/Spec-safety.md) §4.2 | **承認**（2026-11-01 ユーザー）。[Spec.md](Spec.md) §1.2 に反映 |
+| th-system | **立会試験中の測定を終えたら（測定機構を引いたら）、「測定を終えた」を th-system へ返す**（th-system の停止命令を解く合図） | th [Spec-onsite.md](../../../../th-system/docs/plan/spec/Spec-onsite.md) §7.2・th `SM-3.1.2-063` | **承認**（2026-11-01 ユーザー）。[Spec.md](Spec.md) §1.1.1 に反映。th-system にも記録済み（`4becb84`） |
+| th-system | **本システムの画面で人が抜ける操作をしたら、「終了」の指示を th-system へ送る**（th-system をメインメニューへ戻す） | th `SM-3.1.2-135` | **承認**（2026-11-01 ユーザー）。[Spec.md](Spec.md) §1.1.2・§1.2 に反映。th-system にも記録済み（`4becb84`） |
+| th-system | **盤前の停止位置は、盤面が機体の中心から 0.389 m 以上（機体の前面から約 0.11 m 以上）離れるように決める。**それより近いと、動き出す前の確認（角が描く円の中の障害物）に盤が入り、旋回も発進もできなくなる | th [Spec-measure.md](../../../../th-system/docs/plan/spec/Spec-measure.md) §4.4 | **承認**（2026-11-01 ユーザー）。[Spec.md](Spec.md) §1.1.2 に反映。th-system にも記録済み（`4becb84`） |
+| th-system | **本システムの画面のヘッダーの非常停止は、th-system の画面の非常停止と同じ扱い**（送り続け、押した側でラッチする） | th [Spec-safety.md](../../../../th-system/docs/plan/spec/Spec-safety.md) §4.2 | **承認**（2026-11-01 ユーザー）。[Spec.md](Spec.md) §1.2 に反映。th-system にも記録済み（`4becb84`） |
 
 ---
 
