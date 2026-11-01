@@ -1,4 +1,4 @@
-# docs/plan/spec — 完全設計書
+# docs/plan/spec — 仕様書
 
 fk-system の**完成形の正本**。
 

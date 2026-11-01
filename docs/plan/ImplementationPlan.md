@@ -2,7 +2,7 @@
 
 **何を・どの順番で作るか。**進捗はこのファイルの「状態」列を更新して共有する。
 
-- 何を作るかは [完全設計書](spec/README.md)（正本）と [詳細設計書](detailed/README.md) にある。
+- 何を作るかは [仕様書](spec/README.md)（正本）と [詳細設計書](detailed/README.md) にある。
   ここはその**順番と進み具合**だけを扱う。
 - 進め方（§2）は th-system の [ImplementationPlan.md](../../../th-system/docs/plan/ImplementationPlan.md) §2 を
   2026-10-30 時点で写したもの。**以後はこちらが正**で、th-system 側の改定は自動では入らない
@@ -16,7 +16,7 @@
 
 | | 状態 |
 | --- | --- |
-| 完全設計書（何が・どう振る舞うべきか） | **対象（膜厚・板厚）・2 つの測定モードの流れ・画面の入口・移動の役割分担（本システムは判断、th-system は制御）・画像認識を ss-system に分けること（欲しい情報を渡し、カメラは ss-system が動かす）・昇降機の操作権限（本システムと ss-system）・測定機構でできること（昇降機と一緒に上下・前後）まで決定。**安全（`FK-X1`・`FK-X4`）・各システムとのやり取り（[Spec-open.md](spec/Spec-open.md) `FK-A1`）・値は未定 |
+| 仕様書（何が・どう振る舞うべきか） | **対象（膜厚・板厚）・2 つの測定モードの流れ・画面の入口・移動の役割分担（本システムは判断、th-system は制御）・画像認識を ss-system に分けること（欲しい情報を渡し、カメラは ss-system が動かす）・昇降機の操作権限（本システムと ss-system）・測定機構でできること（昇降機と一緒に上下・前後）まで決定。**安全（`FK-X1`・`FK-X4`）・各システムとのやり取り（[Spec-open.md](spec/Spec-open.md) `FK-A1`）・値は未定 |
 | 詳細設計書（どう実装するか） | 骨格のみ |
 | 実装 | **未着手** |
 
@@ -264,7 +264,7 @@ th-system では 14 回マージしたのに計画書に反映されたのは 1 
 
 | 文書 | 中身 |
 | --- | --- |
-| [`spec/README.md`](spec/README.md) | 完全設計書。何が・どう振る舞うべきか |
+| [`spec/README.md`](spec/README.md) | 仕様書。何が・どう振る舞うべきか |
 | [`detailed/README.md`](detailed/README.md) | 詳細設計書。各作業単位の実装内容と完了条件 |
 | [`EXCEPTION-LEDGER.md`](EXCEPTION-LEDGER.md) | デモ特例で省略・バイパスしたままの事項 |
 | th-system [`ImplementationPlan.md`](../../../th-system/docs/plan/ImplementationPlan.md) §2 | 進め方の手本。改定に気づいたら §2 へ取り込む |

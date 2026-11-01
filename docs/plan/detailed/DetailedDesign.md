@@ -1,8 +1,8 @@
 # 詳細設計書 — fk-system
 
-[完全設計書](../spec/Spec.md) を実装できる形に落とす。読み方は [README.md](README.md)。
+[仕様書](../spec/Spec.md) を実装できる形に落とす。読み方は [README.md](README.md)。
 
-> **2026-10-30 時点で骨格のみ。**完全設計書の対象と構成の問い（[Spec-open.md](../spec/Spec-open.md) `FK-S1`・`FK-A1`・`FK-A2`）が決まるまで、
+> **2026-10-30 時点で骨格のみ。**仕様書の対象と構成の問い（[Spec-open.md](../spec/Spec-open.md) `FK-S1`・`FK-A1`・`FK-A2`）が決まるまで、
 > 設計方針（§1）のほかは何も書かない。
 
 ---
@@ -21,5 +21,5 @@
 
 ## 3. 段階と作業パケット
 
-未定。完全設計書の章ができたら、th-system と同じく**各段階の終わりに必ず「動くもの」が残る**ように切り、
+未定。仕様書の章ができたら、th-system と同じく**各段階の終わりに必ず「動くもの」が残る**ように切り、
 `WP-<領域>-<番号>` で番号を振る。一覧と状態は [ImplementationPlan.md](../ImplementationPlan.md) §4 に置く。

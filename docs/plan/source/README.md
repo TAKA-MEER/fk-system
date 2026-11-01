@@ -15,9 +15,9 @@ spec に統合する前の材料。**仕様の正ではない。**spec に取り
 
 | リポジトリ | 入口 | 中身 |
 | --- | --- | --- |
-| th-system | `../th-system/docs/plan/spec/README.md` | 移動システムの完全設計書（正本） |
-| hve-system | `../hve-system/docs/plan/spec/README.md` | 昇降機・上部カメラの完全設計書（正本） |
-| ss-system | `../ss-system/docs/plan/spec/README.md` | 画像認識の完全設計書（正本）。先行試作は `../../lifting-lug-pose`（git 管理外） |
+| th-system | `../th-system/docs/plan/spec/README.md` | 移動システムの仕様書（正本） |
+| hve-system | `../hve-system/docs/plan/spec/README.md` | 昇降機・上部カメラの仕様書（正本） |
+| ss-system | `../ss-system/docs/plan/spec/README.md` | 画像認識の仕様書（正本）。先行試作は `../../lifting-lug-pose`（git 管理外） |
 
 パスはリポジトリ直下（`fk-system/`）基準。
 
