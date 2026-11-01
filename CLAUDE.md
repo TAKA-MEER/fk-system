@@ -63,6 +63,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **相手側に要る変更は [Spec-open.md](docs/plan/spec/Spec-open.md) §1.2 に申し送りとして貯める。**
 - **相手のリポジトリは本システムから直接編集しない（ユーザーの指示があるときを除く）。本システムの実装管理担当が、相手の実装管理担当へ指示として送る**（2026-10-31 ユーザー決定。手順は [ImplementationPlan.md](docs/plan/ImplementationPlan.md) §2.4）。
   **相手側では毎回、ユーザーが指示を確認して続行承認を出してから進む**（2026-11-01 ユーザー決定）。
+  **ss-system だけは、ss-system の実装が始まるまで本システムの実装管理担当が直接書いてよい**（2026-11-01 ユーザー許可）。書いたら ss-system の決定の記録に、誰が記録したかを残す。
   直接触るときは、そのリポジトリの `CLAUDE.md` に従う（作業前の `git status`・自分のファイルだけステージ）。
 - 読むのは自由。**写さずにリンクする**（写しは先方が直ったときに古いまま残る）。
 
