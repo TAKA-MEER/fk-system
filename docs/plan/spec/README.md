@@ -38,6 +38,7 @@ fk-system の**完成形の正本**。
 | 対象・用語・目標・範囲 | [Spec.md](Spec.md) |
 | **何が決まっていないか** | [Spec-open.md](Spec-open.md) §2 |
 | 関連システム（th-system・hve-system・ss-system）との関係 | [Spec-open.md](Spec-open.md) §1 |
+| 測定機構の制御の分担 | [Spec-arm.md](Spec-arm.md) |
 | ノード名・ピン・作業パケット | [詳細設計書](../detailed/README.md) |
 | 実装の順番・進捗 | [ImplementationPlan.md](../ImplementationPlan.md) |
 | デモ特例で省略・バイパスしたままの事項 | [EXCEPTION-LEDGER.md](../EXCEPTION-LEDGER.md) |
@@ -50,6 +51,7 @@ fk-system の**完成形の正本**。
 | --- | --- | --- |
 | **[Spec.md](Spec.md)** | **本体。**対象・用語・目標・設計思想・全体構成・目次 | 骨格 |
 | **[Spec-open.md](Spec-open.md)** | **関連システムとの関係・未確定事項・決定の記録** | 初版 |
+| [Spec-arm.md](Spec-arm.md) | 測定機構の制御の分担（2 つの制御器の受け持ち・腕が出ている間の決まり・止まったときの扱い） | 初版 |
 
 **領域ごとの詳細ファイル（`Spec-<領域>.md`）は、書く内容ができた時点で足す。**
 th-system・hve-system では `Spec-safety.md`（安全）・`Spec-ops.md`／`Spec-ui.md`（操作・画面）・`Spec-params.md`（パラメータ）に分けている。
