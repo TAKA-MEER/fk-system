@@ -21,6 +21,6 @@
 
 | 相手 | 正 | 状態 |
 | --- | --- | --- |
-| th-system | th [DetailedDesign-measure.md](../../../../th-system/docs/plan/detailed/DetailedDesign-measure.md)（通り道 §1・名前の一覧 §2・型 §3・画面 §4・入口の分離 §5）。型は th `th_ws/src/th_system_msgs` を取り込み、版 `interface_version` で照合する | **2026-11-04 本システムが確かめ、ユーザーが承認。**自己位置を見失ったときに目的地を取り消して返すことを th に頼んだ（[Spec-open.md](../spec/Spec-open.md) §1.2。反映待ち） |
+| th-system | th [DetailedDesign-measure.md](../../../../th-system/docs/plan/detailed/DetailedDesign-measure.md)（通り道 §1・名前の一覧 §2・型 §3・画面 §4・入口の分離 §5）。型は th `th_ws/src/th_system_msgs` を取り込み、版 `interface_version` で照合する | **2026-11-04 本システムが確かめ、ユーザーが承認。**自己位置を見失ったときに目的地を取り消して返すことを th に頼み、th が反映した（th `6f1ca35`。[Spec-open.md](../spec/Spec-open.md) §1.2）。版は `"1"` のまま（th は実装前の案の直しでは上げない） |
 
 **名前は写さない**（写しは先方が直ったときに古いまま残る）。本システムの名前（パッケージ接頭辞など）は §0 が決まってから足す。
