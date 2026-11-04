@@ -99,7 +99,7 @@ th 側の名前（`/measure/*`・`/map`・`/ui/active_screen`・`/safety/estop_u
 | 種類 | 名前 |
 | --- | --- |
 | 段（`phase`） | `IDLE` / `PREPARE` / `SURVEY` / `SELECT` / `LOWER` / `GOAL` / `RECHECK` / `AT_PANEL` / `FINISH` / `PAUSED` / `REENTRY` / `HALTED` |
-| 飛ばす理由（`PanelResult.reason`） | `no_path`（経路の再計算をしても解けない）/ `stand_blocked`（正面側の床が塞がっていて立てない）/ `stand_mismatch`（認識し直した立ち位置が許容差を超える）/ `top_not_found`（天面が見つからない）/ `arm_space_blocked`（腕が振れる範囲が左右とも塞がっている。測定機構の口が返す）/ `no_mechanism`（測定機構が付いていない） |
+| 飛ばす理由（`PanelResult.reason`） | `no_path`（経路の再計算をしても解けない）/ `stand_blocked`（正面側の床が塞がっていて立てない）/ `stand_mismatch`（認識し直した立ち位置が許容差を超える）/ `top_not_found`（天面が見つからない）/ `arm_space_blocked`（腕が振れる範囲が左右とも塞がっている。測定機構の口が返す）/ `no_mechanism`（測定機構が付いていない）/ `ss_failed`（ss の結果が時間内に来ない・使える結果が得られない） |
 | 止める理由（`halt_reason`） | `arm_stuck`（腕が出たまま動けない）/ `lift_not_lowered`（昇降機を下げられない）/ `state_unreadable`（昇降機の高さか腕の状態が読めない）/ `ss_cleanup_timeout`（ss の後片付けの完了が来ない）/ `ss_link_lost`（ss と通信できない）/ `arm_link_lost`（腕が出ている間に腕の制御器と通信できない） |
 
 ## 5. パラメータ（`fk_bringup` の `params.yaml`。`auto_runner`）
@@ -123,6 +123,7 @@ th 側の名前（`/measure/*`・`/map`・`/ui/active_screen`・`/safety/estop_u
 | `blocked_wait_s` | s | 5 | 暫定（`BLOCKED` がこれだけ続いたら経路の再計算を出す） |
 | `ss_result_timeout_s` | s | 300 | 暫定（結果を待つ上限。超えたら取り消す） |
 | `ss_cleanup_timeout_s` | s | 60 | 暫定（仕様は「一定時間」。結果か取り消しのあと、後片付けの完了を待つ上限。超えたら `ss_cleanup_timeout`） |
+| `ss_retry_max` | 回 | 2 | 暫定（ss の結果が使えないとき依頼し直す上限） |
 | `ss_pose_tol_m` | m | 0.02 | 暫定（ss の依頼の間に機体が動いていないとみなす差） |
 | `ss_pose_tol_rad` | rad | 0.02 | 暫定（同上） |
 | `row_yaw_tol_rad` | rad | 0.17 | 暫定（約 10°。同じ列とみなす正面の向きの差） |
