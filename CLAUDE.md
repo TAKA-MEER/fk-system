@@ -16,7 +16,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   **自律測定は準備なしで、起動のたびに地図を作り直す**（th-system の試験場内の動作とはほとんど別物。`FD-13`）。
 - 画面は走行系の画面が主で、そこからカメラ・本システムへ移る（全体に関わる判断）。本システムの画面は**別のポートだが th-system の中にいるような操作性**で、いつでも抜けられる。
 - **動かす PC は th-system と同じ PC（ノートパソコン・Ubuntu 22.04・GPU なし）で、th-system と同じ構成で作る。Docker コンテナやポートなどは分ける**（2026-11-01・2026-11-04 ユーザー決定）。
-  **th-system とのやり取りの具体（名前・形）は th-system が書き、本システムが確かめる**（2026-11-04 ユーザー決定）。こちらで th 側の名前を発明しない。
 - 残りは未定（[Spec-open.md](docs/plan/spec/Spec-open.md) §2）。**推測で埋めない**（推測は次のセッションで別の推測になる）。
 
 **2026-10-30 に、開発体制を th-system と同じにして立ち上げた**（文書の役割分担・herdr／orca ＋ codex／opencode による実装・受け入れ検査・git 運用）。
@@ -54,7 +53,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **本システムは th-system・hve-system に指示を出し、情報を取る。走行の指示は本システムが出し、hve-system は走行を指示する権限を持たない**（2026-10-30 ユーザー決定。`FD-2`）。
   **本システムは th-system に対して人と同等の権限を持つ**（2026-11-01 ユーザー決定。`FD-12`）。
   hve-system の不変ルール `HD-1`（th-system と独立・連動なし）は**変えない**。走行と昇降を組み合わせる判断は本システムに置き、**hve-system と th-system を直接つなぐ設計を持ち込まない。**
-  何を指示し何を取るかは未定（[Spec-open.md](docs/plan/spec/Spec-open.md) `FK-A1`）。走行と昇降の排他の保証（`FK-X1`）が決まるまで、両方を動かす実装を入れない（ss-system が昇降させる場合も同じ）。
+  **走行系への指示と返る状態は th-system [Spec-measure.md](../th-system/docs/plan/spec/Spec-measure.md) §3 のとおり。その具体（名前・形）は th-system が書き、本システムが確かめる。こちらで th 側の名前を発明しない**（2026-11-04 ユーザー決定）。昇降機・画像認識の残りは未定（[Spec-open.md](docs/plan/spec/Spec-open.md) `FK-A1`）。走行と昇降の排他の保証（`FK-X1`）が決まるまで、両方を動かす実装を入れない（ss-system が昇降させる場合も同じ）。
 - **画像認識は ss-system（別リポジトリ `../ss-system`）に置き、本システムはそこへ欲しい情報を渡す。その情報を得るためのカメラの操作は ss-system に任せる**（2026-10-31 ユーザー決定。`FD-9`・`FD-10`）。
   **ss-system に渡すのは方向の範囲、返るのはその範囲の盤の位置（ローカル座標系。LiDAR の地図は考慮しない）。測る点は本システムが決める**（2026-11-01 ユーザー決定）。
   **ss-system の仕様は本システムの設計が決めるが、ss-system は汎用的になるよう意識する**（本システム専用の都合を持ち込まない。盤の位置を返すだけの機能として、ほかのシステムからも要求される）。
