@@ -11,9 +11,10 @@
 
 ## 0. 命名規則
 
-未定。ROS2 を使う場合は th-system [DetailedDesign-names.md](../../../../th-system/docs/plan/detailed/DetailedDesign-names.md) §0 に揃える
-（パッケージ接頭辞だけを本システム用に決める）。
+**th-system と同じ構成で作る**（2026-11-04 ユーザー決定。[Spec-open.md](../spec/Spec-open.md) `FK-A2`）ので、th-system [DetailedDesign-names.md](../../../../th-system/docs/plan/detailed/DetailedDesign-names.md) §0 に揃える
+（パッケージ接頭辞だけを本システム用に決める。未定）。
 
 ## 1. 関連システム側の名前（参照のみ・こちらでは発明しない）
 
 `FK-A1` で結合すると決まったら、結合に関わる相手側の名前を出典つきで載せる。**正は相手の文書とコード。**
+**th-system とのやり取り（自律測定の移動）の名前と形は th-system が書き、本システムが確かめる**（2026-11-04 ユーザー決定）。th-system が書くまで、ここに th 側の名前を載せない。

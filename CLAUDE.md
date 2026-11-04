@@ -15,7 +15,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 測定モードは**お立会試験中の測定**（盤前で「測定」ボタン → 天面中央 1 点）と**自律測定**（配置図から盤を選ぶ → 自律移動 → 四隅＋中央の 5 点）。測る点は画像から推定する。
   **自律測定は準備なしで、起動のたびに地図を作り直す**（th-system の試験場内の動作とはほとんど別物。`FD-13`）。
 - 画面は走行系の画面が主で、そこからカメラ・本システムへ移る（全体に関わる判断）。本システムの画面は**別のポートだが th-system の中にいるような操作性**で、いつでも抜けられる。
-- **動かす PC はノートパソコン（Ubuntu 22.04・GPU なし）**（2026-11-01 ユーザー決定）。
+- **動かす PC は th-system と同じ PC（ノートパソコン・Ubuntu 22.04・GPU なし）で、th-system と同じ構成で作る。Docker コンテナやポートなどは分ける**（2026-11-01・2026-11-04 ユーザー決定）。
+  **th-system とのやり取りの具体（名前・形）は th-system が書き、本システムが確かめる**（2026-11-04 ユーザー決定）。こちらで th 側の名前を発明しない。
 - 残りは未定（[Spec-open.md](docs/plan/spec/Spec-open.md) §2）。**推測で埋めない**（推測は次のセッションで別の推測になる）。
 
 **2026-10-30 に、開発体制を th-system と同じにして立ち上げた**（文書の役割分担・herdr／orca ＋ codex／opencode による実装・受け入れ検査・git 運用）。
@@ -123,3 +124,4 @@ th-system・hve-system で踏んだもののうち、同じ道具（herdr／orca
 - **既に opencode が動いているペインに `herdr agent start` を打たない。**`start` はシェルプロンプト待ちを期待するため、動作中のセッションに文字列を打ち込んで壊す。`herdr agent rename` だけで登録する。
 - **別セッションへの `SendMessage` は、相手の許可モードがこちらと違うと相手側で保留になり、相手のユーザーが承認するまで届かない**（2026-11-01。orca で起動した th・hve は bypass だった）。保留の通知が来たら再送せず、ユーザーに相手のターミナルでの承認を頼む（ImplementationPlan §2.4）。
 - **`pkill -f <パターン>` は自分のシェルを殺すことがある**（パターンが自分のコマンドラインにマッチする。docker の中でもホストでも）。PID 指定で止める。
+- **th-system と同じ PC の別コンテナから th のトピックを購読すると、一覧には出るのに 0 件しか届かない**（th-system 2026-10-26。th 側の IPC が private で、FastDDS が共有メモリで送るため）。受ける側を UDP だけにする（th `th_ws/scripts/vibe_measure/fastdds_udp.xml` を `FASTRTPS_DEFAULT_PROFILES_FILE` で渡す）。**th の実機が動いている間に試験を回すと、同じ `ROS_DOMAIN_ID` で混線する**（th-system 2026-09-23）。試験はドメインを分ける。ROS2・Docker のほかの癖は、最初の作業パケットで th-system `CLAUDE.md` から拾う。

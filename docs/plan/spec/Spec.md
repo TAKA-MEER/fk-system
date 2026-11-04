@@ -25,7 +25,7 @@
 
 **指示の権限**（2026-10-30 ユーザー決定）: **走行の指示は本システムが出す。hve-system は走行を指示する権限を持たない。**
 走行と昇降・カメラを組み合わせる判断は本システムが持ち、hve-system は th-system と直接やり取りしない（hve-system `HD-1` はそのまま）。
-各システムに具体的に何を指示し何を取るかは未定（[Spec-open.md](Spec-open.md) `FK-A1`）。
+**走行系への指示と返る状態は th-system [Spec-measure.md](../../../../th-system/docs/plan/spec/Spec-measure.md) §3 のとおり**（2026-11-04 ユーザー決定。具体的な取り決めは th-system が書き、本システムが確かめる）。昇降機・画像認識に何を指示し何を取るかの残りは未定（[Spec-open.md](Spec-open.md) `FK-A1`）。
 
 **カメラの操作**（2026-10-31 ユーザー決定。`FD-10`）: **本システムは ss-system に欲しい情報を渡すだけで、その情報を得るために hve-system のカメラを動かすのは ss-system。**
 **ss-system の仕様は本システムの設計が決める。ただし ss-system は本システム専用にせず、汎用的になるよう意識する**（将来作るかもしれない、th-system の前日準備（th-system [Spec-onsite.md](../../../../th-system/docs/plan/spec/Spec-onsite.md) §2）を自動化するシステムにも対応できるように）。
