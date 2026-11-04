@@ -34,8 +34,9 @@
 | ファイル | 内容 | 状態 |
 | --- | --- | --- |
 | **[DetailedDesign.md](DetailedDesign.md)** | **本体。**設計方針・全体構成・作業パケットの一覧・目次 | 骨格 |
-| [DetailedDesign-names.md](DetailedDesign-names.md) | **名前辞書。**この文書に無い名前を実装で作ってはいけない | 空 |
+| [DetailedDesign-names.md](DetailedDesign-names.md) | **名前辞書。**この文書に無い名前を実装で作ってはいけない | 自律測定の移動の分（案。2026-11-04） |
 | [DetailedDesign-open.md](DetailedDesign-open.md) | 未確定・申し送り・レビュー指摘管理表 | 初版 |
+| [DetailedDesign-auto.md](DetailedDesign-auto.md) | 自律測定の移動（構成・状態機械・純関数・関門・試験・作業パケット） | 案（2026-11-04） |
 
 領域ごとのファイル（`DetailedDesign-<領域>.md`）と作業パケットの一覧（`DetailedDesign-packets.md`）は、
 仕様書の対応する章ができてから足す。

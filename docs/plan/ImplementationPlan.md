@@ -235,7 +235,16 @@ th-system では 14 回マージしたのに計画書に反映されたのは 1 
 
 ## 4. 段階ごとの作業
 
-未定。
+**自律測定の移動**（詳細設計 [DetailedDesign-auto.md](detailed/DetailedDesign-auto.md) §7。2026-11-04 初版・案）。ほかは未定。
+
+| WP | 中身 | 依存 | 状態 |
+| --- | --- | --- | --- |
+| `WP-AUTO-01` | 土台（コンテナ・th の型の取り込み・生存確認と版の照合・偽の th） | — | 未着手（詳細設計のユーザー確認待ち） |
+| `WP-AUTO-02` | 純関数（回る順・立ち位置・座標・関門・見張り・再開の条件） | — | 未着手（同上） |
+| `WP-AUTO-03` | 状態機械（測定機構なしの道で回り切る） | 01・02 | 未着手 |
+| `WP-AUTO-04` | 画面 | 03 | 未着手 |
+| `WP-AUTO-05` | 昇降機の口 | 01・**名前待ち**（[DetailedDesign-open.md](detailed/DetailedDesign-open.md) §1 #1） | 着手できない |
+| `WP-AUTO-06` | ss の口 | 01・**名前待ち**（同 #2） | 着手できない |
 
 ## 5. 各段階の確認方法
 
@@ -258,7 +267,7 @@ th-system では 14 回マージしたのに計画書に反映されたのは 1 
 | ~~5~~ | ~~目標（`FK-G1`）と設計思想を決め、[Spec.md](spec/Spec.md) §3・§4 を埋める~~ | **済**（2026-11-01。th-system の考え方を大まかに引き継ぎ、目標というほど厳密にはしない） |
 | 6 | 領域ごとの Spec ファイルを足す | 一部済（2026-11-04。[Spec-auto.md](spec/Spec-auto.md)＝自律測定の移動の決まり） |
 | 7 | 使う道具を決め（`FK-A2`。**PC 側は 2026-11-04 決定**: th-system と同じ PC で同じ構成、コンテナとポートは別。残りはアームの制御器のファーム）、`CLAUDE.md`「ビルドとテスト」・`.gitignore` を足す | 一部済（2026-11-04） |
-| 8 | 詳細設計・作業パケットの切り出し。**自律測定の移動から先に始める**（2026-11-04。測定機構の確定を待たない。移動の振る舞いは [Spec-auto.md](spec/Spec-auto.md) で決めた。th 側の名前は th-system が書き、2026-11-04 に確かめた（th [DetailedDesign-measure.md](../../../th-system/docs/plan/detailed/DetailedDesign-measure.md)）） | 着手できる（2026-11-04） |
+| 8 | 詳細設計・作業パケットの切り出し。**自律測定の移動から先に始める**（2026-11-04。測定機構の確定を待たない。移動の振る舞いは [Spec-auto.md](spec/Spec-auto.md) で決めた。th 側の名前は th-system が書き、2026-11-04 に確かめた（th [DetailedDesign-measure.md](../../../th-system/docs/plan/detailed/DetailedDesign-measure.md)）） | **着手（2026-11-04）**: [DetailedDesign-auto.md](detailed/DetailedDesign-auto.md) を案として書いた。ユーザーの確認待ち（[DetailedDesign-open.md](detailed/DetailedDesign-open.md) §1）。作業パケットは §4 |
 
 ## 7. 関連文書
 

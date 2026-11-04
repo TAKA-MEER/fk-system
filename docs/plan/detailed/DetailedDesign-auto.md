@@ -1,0 +1,174 @@
+# 自律測定の移動
+
+[DetailedDesign.md](DetailedDesign.md) の詳細。**自律測定の移動（配置図 → 盤の選択 → 盤から盤への移動 → 盤前の作業への引き渡し）を、実装できる形に落とす。**
+入力は [Spec-auto.md](../spec/Spec-auto.md)・[Spec.md](../spec/Spec.md) §1.1.2・§1.2 と、th-system [DetailedDesign-measure.md](../../../../th-system/docs/plan/detailed/DetailedDesign-measure.md)（th との名前と形の正）。
+盤前で腕を起こしてから格納するまで（測定機構の制御。[Spec-arm.md](../spec/Spec-arm.md)）は**ここでは扱わない**（§1.3 の「測定機構の口」の向こう側）。
+名前はすべて [-names.md](DetailedDesign-names.md)（`DD-1`）、値と出どころは [-names.md](DetailedDesign-names.md) §5（`DD-3`）。
+
+**状態: 案（ユーザーの確認待ち。2026-11-04 初版）。**決めてもらうことは [-open.md](DetailedDesign-open.md) §1。
+
+---
+
+## 0. 結論
+
+| 項目 | 決めたこと |
+| --- | --- |
+| 機能側 | **ROS 2 のノード 1 つ（`auto_runner`）が、順序を回す状態機械・th とのやり取り・生存確認をまとめて持つ。**判定はすべて純関数（`fk_auto.core`。`DD-2`） |
+| 安全の効き目 | **th への指示と昇降機への命令は、必ず 1 つの関門（§4.1）を通してから送る。**走っている間の見張り（§4.2）も純関数 |
+| 生存確認 | **状態機械と同じ実行器のタイマーから出す**（§1.2）。判断が止まれば生存確認も止まり、th が一時停止に落とす |
+| 相手との境目 | 4 つの口（th・昇降機・ss・測定機構）に分ける（§1.3）。**th の口は th の名前のまま。昇降機・ss の口は名前が決まるまで抽象のまま**（偽物で試験する） |
+| 測定機構なしで動かせる | 測定機構が付いていなければ、移動して盤前の作業を「測定機構が付いていない」で飛ばす（[Spec-auto.md](../spec/Spec-auto.md) §7）。**最初に動かせるものはこの道** |
+| 画面 | ブラウザ。本システムの rosbridge（別ポート）で機能側とやり取りし、th の rosbridge で在席・非常停止・ヘッダーを送受する（§1.1） |
+
+---
+
+## 1. 構成
+
+### 1.1 置き場所と通り道
+
+| もの | 置き場所 | 通り道 |
+| --- | --- | --- |
+| 機能側（`fk_auto`） | th と同じ PC の**別コンテナ `fk_robot`**。`--network host`・`ROS_DOMAIN_ID` 10・FastDDS は UDP だけ | th とは ROS 2 で直接（th [DetailedDesign-measure.md](../../../../th-system/docs/plan/detailed/DetailedDesign-measure.md) §1）。**UDP だけのプロファイルと型は th のリポジトリ（`../th-system`）のものをコンテナに入れて使い、写さない** |
+| 画面（`fk_web`） | 同じコンテナから静的に配信（ポートは -names.md §6） | **本システムの rosbridge**（別ポート）: 機能側への指示・状態・配置図・結果。**th の rosbridge（9090）**: 在席 `/ui/active_screen`・非常停止 `/safety/estop_ui`・ヘッダーと異常ウィンドウ（th DetailedDesign-measure.md §4） |
+| 昇降機（hve-system の昇降部） | — | **未定**（名前は hve が書くか未決。[-open.md](DetailedDesign-open.md) §1）。昇降部の WS（hve-system [DetailedDesign-protocol.md](../../../../hve-system/docs/plan/detailed/DetailedDesign-protocol.md) §2）には、まだ腕の状態も目標の高さへの移動も無い |
+| ss-system | — | **未定**（ss がどこで動き、何で通すか。[-open.md](DetailedDesign-open.md) §1） |
+
+**機能側は PC の起動と同時に立ち上げ、止めない。**th は自律測定へ入るときに生存確認を見る（th `SM-3.1.2-120`）。「許可する」を押す前から生存確認が出ている必要がある。
+
+### 1.2 機能側の中身
+
+| 部分 | 中身 |
+| --- | --- |
+| `fk_auto.core` | **純関数だけ**（§3・§4）。ROS 2 にも通信にも触れない。ホストで試験する |
+| `fk_auto.ports` | 口（§1.3）。本物と偽物を同じ形で差し替える |
+| `fk_auto.runner` | 状態機械（§2）。口から集めた「いまの様子」（`Snapshot`）を core に渡し、返った判断を口に流すだけ |
+| `auto_runner`（ノード） | 上の 3 つを 1 つの実行器（シングルスレッド）で回す。**サービス呼び出しはすべて非同期**（待って塞がない） |
+
+**生存確認の出し方:** th の生存確認（5 Hz）は `auto_runner` のタイマーから出す。
+**出す前に、状態機械が最後に回った時刻が `runner_stall_ms` 以内かを確かめ、超えていれば出さない**（実行器は生きているが判断が止まった場合も、th が途絶とみなす）。生存確認だけを別のノードやスレッドで出してはいけない。
+
+### 1.3 口（境目）
+
+| 口 | 機能側が読むもの | 機能側が出すもの | 名前 |
+| --- | --- | --- | --- |
+| **th** | モードと状態・自己位置と地図の世代・進行中の指示・止まった理由・入り直しの要否（`/measure/status`）／指示の結果（`/measure/result`）／腕が振れる範囲の確認 | 指示（`meas.goal`・`reroute`・`start`・`stop`・`abort`・`finish`）／生存確認 | **th の名前のまま**（th DetailedDesign-measure.md §2・§3）。`meas.turn`・`check_arm_clearance` は測定機構の側が使う |
+| **昇降機** | 下端に着いているか・高さ（読めるか）・原点が取れているか・いま操作している元・測定機構が付いているか・腕の制御器と通信できるか・腕が格納位置にあるか | 下端まで下げる・止める | **抽象のまま**（`LiftPort`）。名前が決まったら本物を作る（WP-AUTO-05） |
+| **ss** | 結果（盤ごとの天面の矩形と確からしさ／空の一覧と理由）・後片付けの完了 | 依頼（方向の範囲）・取り消し | **抽象のまま**（`SsPort`）。WP-AUTO-06 |
+| **測定機構** | 盤ごとの立ち位置・腕が格納位置にあるか・盤前の作業の結果（[Spec-auto.md](../spec/Spec-auto.md) §1 の 3 つだけ） | 盤前の作業を始める・中止（腕を格納してから止める） | `ArmPort`。**最初の版は「測定機構なし」**（§2.3） |
+
+---
+
+## 2. 状態機械（`fk_auto.runner`）
+
+### 2.1 段
+
+| 段 | すること | 次へ |
+| --- | --- | --- |
+| `IDLE` | 自律測定の外。生存確認だけ出す | 画面が `auto.begin` を送り、th が `AUTO_MEASURE` → `PREPARE` |
+| `PREPARE` | 腕が格納位置か・昇降機の原点が取れているかを確かめる。原点が無ければ下端まで下げる（関門を通す） | 済み → `SURVEY`。下げられない → `HALTED` |
+| `SURVEY` | ss に全周を依頼し、結果を地図の座標に直して配置図にする（§3 `to_map`・`front_edge`）。**後片付けの完了まで待つ** | 完了 → `SELECT` |
+| `SELECT` | 人が盤を選んで「開始」（`auto.start`）するのを待つ。「もう一度探す」（`auto.rescan`）→ `SURVEY` | 開始 → 回る順を決めて（§3 `order_panels`）`LOWER` |
+| `LOWER` | 昇降機が下端でなければ下げる | 下端 → `GOAL`。下げられない → `HALTED` |
+| `GOAL` | 立ち位置（§3 `stand_pose`）へ `meas.goal`。`BLOCKED` が `blocked_wait_s` 続いたら `meas.reroute`（`reroute_max` 回まで） | `ARRIVED` → `RECHECK`。解けない → `meas.abort` → 飛ばす（`no_path`）。立てない（§3 `stand_blocked`）→ 出さずに飛ばす（`stand_blocked`） |
+| `RECHECK` | その盤の方向を ss に依頼して認識し直し、配置図を直す。立ち位置を求め直す | ずれが許容差内 → `AT_PANEL`。超える → 1 回だけ `GOAL` に戻る。2 回目も超える → 飛ばす（`stand_mismatch`）。見つからない → 飛ばす（`top_not_found`） |
+| `AT_PANEL` | 測定機構の口に盤前の作業を渡し、結果を待つ | 結果を記録 → 次の盤の `LOWER`。全部済み → `FINISH` |
+| `FINISH` | 昇降機を下げ、最後の盤の前で待つ。結果の一覧を出す | 人が選び直して「開始」→ `LOWER` |
+
+**飛ばす** = 理由を結果に残して次の盤へ（[Spec-auto.md](../spec/Spec-auto.md) §6）。理由の名前は -names.md §4.3。
+
+### 2.2 割り込み（どの段からでも）
+
+| 起きたこと | 振る舞い | 戻り方 |
+| --- | --- | --- |
+| th が `PAUSE`（人のジョグ・回復フォルト・通信途絶・§4.2 の停止） | `PAUSED`。**自分からは発進しない** | 人の「走行」（`auto.run`）→ §3 `can_run` が通れば `meas.start`。`GOAL` はそのまま続く。**`RECHECK`・`AT_PANEL` は、その段の頭からやり直す**（機体が動いたかもしれないため） |
+| `/measure/result` が `CANCELLED`・`localization_lost`、または `reentry_required` | `REENTRY`。「走行」を受けない（[Spec-auto.md](../spec/Spec-auto.md) §9） | 人が自律測定を抜けて入り直す。測り終えた盤の結果は残す |
+| 全体を止める場面（[Spec-auto.md](../spec/Spec-auto.md) §6 の下段・§7） | `HALTED`。th・昇降機・ss に新しい指示を出さない。理由を画面に出す | 人が抜ける |
+| 人の「中止」（`auto.abort`） | 走っていれば `meas.abort` で止めて `SELECT`。`AT_PANEL` なら測定機構の口に中止を渡し、腕の格納を待ってから `SELECT` | — |
+| 人の「終了」（`auto.finish`） | 腕が格納位置になければ、画面で確認が済んだ印（`arm_confirmed`）が要る。`meas.finish` → `IDLE` | — |
+
+### 2.3 測定機構なしの道
+
+昇降機の口が「測定機構が付いていない」を返す間は、`AT_PANEL` で作業を渡さず、結果を「飛ばした・`no_mechanism`」にする。
+腕の条件（格納位置にあるか）は満たしているとみなす（[Spec-auto.md](../spec/Spec-auto.md) §7）。**最初の版の結合試験（WP-AUTO-03）はこの道で 1 盤・複数盤を通す。**
+
+---
+
+## 3. 純関数（`fk_auto.core`）
+
+| 関数 | 入力 → 出力 | 仕様 |
+| --- | --- | --- |
+| `to_map` | ss の矩形（依頼した時点の機体基準）・依頼した時点の自己位置 → 地図の座標の矩形 | [Spec-auto.md](../spec/Spec-auto.md) §3 |
+| `front_edge` | 矩形・認識したときの機体の位置 → 正面の辺と、正面の向き（盤から外向き） | §2「盤の正面」 |
+| `group_rows` | 盤の一覧 → 列（正面の向きの差が `row_yaw_tol_rad` 以内で、隣との隙間が `row_gap_max_m` 以内のものを 1 列） | §2「回る順」 |
+| `order_panels` | 選ばれた盤・列・今の位置 → 回る順（近い列から。列の中は正面に向かって右から） | §2「回る順」 |
+| `stand_pose` | 盤（正面の辺と向き） → 立ち位置（正面の辺の中央から外へ `stand_distance_min_m` ＋ `stand_margin_m`、盤に向く） | §1・Spec.md §1.1.2。**本来は測定機構の側が決める。最初の版は測定機構の口がこの関数を呼ぶ** |
+| `stand_blocked` | 地図（`/map`）・立ち位置・機体の形 → 立てるか | §6「正面側の床が地図で塞がっていて立てない」 |
+| `needs_regoal` | 求め直した立ち位置・今の位置 → 許容差（`arrive_tol_m`・`arrive_tol_rad`）を超えるか | §6 |
+| `ss_result_valid` | 依頼した時点と結果の時点の th の様子 → 結果を使ってよいか（状態がずっと `WAIT`・地図の世代が同じ・`pose_valid`・位置の差が `ss_pose_tol_m`・`ss_pose_tol_rad` 以内） | §3（座標の基準）。外れたら結果を捨てて依頼し直す |
+| `can_run` | `Snapshot` → 人の「走行」で発進してよいか、だめなら理由（`PAUSE` でない・入り直しが要る・腕が出ている など）。下端でなければ「先に下げる」 | §5 |
+| `classify_skip` / `classify_halt` | 起きたこと → 飛ばす理由／止める理由 | §6・§7 |
+| `gate` / `drive_watch` | §4 | §4・§5・§7 |
+
+---
+
+## 4. 関門と見張り
+
+### 4.1 関門（`gate(command, snapshot)`）
+
+**th への指示と昇降機への命令は、すべてここを通す。**通らなければ送らず、理由を状態に出す。
+
+| 出すもの | 通す条件（どれか 1 つでも欠ければ出さない） |
+| --- | --- |
+| `meas.goal`・`meas.start` | th の様子が読める（`th_status_stale_ms`）／昇降機が下端に着いている（高さが読める）／腕が格納位置にある（読めて。測定機構なしを除く）／ss の依頼が終わっている（後片付けの完了まで）／入り直しが要らない／th の版が合っている |
+| `meas.reroute` | 上と同じ（走っている間に出すので、下端の条件も同じに見る） |
+| `meas.stop`・`meas.abort`・`meas.finish` | **いつでも通す**（止める側の指示は塞がない） |
+| 昇降機を下げる | 腕が格納位置にある（測定機構なしを除く）／ss の依頼が終わっている／腕の制御器と通信できる（測定機構があるとき。[Spec-arm.md](../spec/Spec-arm.md)「通信できなくなったら昇降機も動かさない」） |
+| ss への依頼 | th が `WAIT`／昇降機と腕の状態が読める／腕が格納位置にある |
+
+### 4.2 走っている間の見張り（`drive_watch(snapshot)`）
+
+th の状態が `NAV`・`ALIGN`・`BLOCKED` の間、`/measure/status` を受けるたびと昇降機の様子が変わるたびに呼ぶ。
+
+| 見るもの | 振る舞い |
+| --- | --- |
+| 昇降機が下端から `lift_drift_stop_mm` 以上離れた | `meas.stop` |
+| 昇降機の高さか腕の状態が読めなくなった（`lift_state_stale_ms` 届かない） | `meas.stop` |
+
+**`ADJUST`（盤前の旋回）は高さで止める対象から外す**（[Spec-auto.md](../spec/Spec-auto.md) §4）。
+
+---
+
+## 5. 値
+
+名前・単位・値・出どころは [-names.md](DetailedDesign-names.md) §5。**暫定のものは試験で決め直す。**
+仕様が「何回か」「一定時間」とだけ書いたもの（`reroute_max`・`blocked_wait_s`・`ss_cleanup_timeout_s`・`ss_result_timeout_s`・`row_yaw_tol_rad`・`row_gap_max_m`）は、ここで暫定値を置いた。
+
+---
+
+## 6. 試験の作り
+
+| 層 | 中身 |
+| --- | --- |
+| 純関数 | ホストの pytest。§3・§4 の表の行ごとに試験を対応させる |
+| 状態機械 | 偽の口（`FakeTh`・`FakeLift`・`FakeSs`・`NoMechanism`）で、ROS 2 なしで回す。§2 の段と割り込みの行ごとに試験 |
+| 結合 | **偽の th ノード（`fake_th`）**を立て、`auto_runner` と ROS 2 で通す。`fake_th` は th DetailedDesign-measure.md の約束（指示を受ける状態・結果を必ず 1 回・止まったときの扱い・版の照合）どおりに振る舞う。**試験は `ROS_DOMAIN_ID` を実機と分ける** |
+| 変異の確かめ | **関門と見張りの呼び出し側の数行**（`gate` を通さずに送れる道・`drive_watch` の結果を捨てる道・生存確認の止まり方）を壊すと、結合の試験が落ちること |
+
+th の 8-g（th 側の実装）が入ったら、`fake_th` との差を本物の th で確かめる（試験項目に足す）。
+
+---
+
+## 7. 作業パケット
+
+段階の終わりに必ず動くものが残る順に切る。詳しいブリーフは渡す前に書く（[README.md](README.md) §3 の約束を満たす形）。
+
+| WP | 中身 | 依存 | 終わりに残るもの |
+| --- | --- | --- | --- |
+| **WP-AUTO-01** 土台 | コンテナ `fk_robot`・th の型と UDP プロファイルの取り込み・`fk_msgs`・`auto_runner` の骨（生存確認・状態の購読・版の照合）・`fake_th` | — | `fake_th` 相手に、生存確認が届き、版が食い違えば拒否される |
+| **WP-AUTO-02** 純関数 | §3・§4 の関数と試験 | — | ホストで全関数の試験が通る |
+| **WP-AUTO-03** 状態機械 | §2 を偽の口で。測定機構なしの道で 1 盤・複数盤・飛ばす・止める・一時停止・入り直し | 01・02 | `fake_th` 相手に、選んだ盤を回り切って結果の一覧が出る |
+| **WP-AUTO-04** 画面 | 配置図と地図の表示・盤の選択と「開始」・「停止」「走行」「中止」「もう一度探す」「終了」（腕の確認つき）・結果の一覧・在席（S-60／S-21）・非常停止・ヘッダー | 03 | ブラウザから `fake_th` 相手に一通り操作できる |
+| **WP-AUTO-05** 昇降機の口 | `LiftPort` の本物 | 01・**名前待ち** | 実機の昇降部で、状態を読み、下端まで下げられる |
+| **WP-AUTO-06** ss の口 | `SsPort` の本物 | 01・**名前待ち** | ss 相手に配置図ができる |
+
+**05・06 は名前が決まるまで着手しない。**01〜04 は今から進められる。
