@@ -34,7 +34,7 @@
 
 | hve-system（昇降部） | hve [DetailedDesign-names.md](../../../../hve-system/docs/plan/detailed/DetailedDesign-names.md)（2026-11-05 に案から移された）と [DetailedDesign-protocol-modules.md](../../../../hve-system/docs/plan/detailed/DetailedDesign-protocol-modules.md)。作業パケットは hve の段階 6（`WP-LIFT-13`・`14` ほか）。今の実物は hve [DetailedDesign-protocol.md](../../../../hve-system/docs/plan/detailed/DetailedDesign-protocol.md) §2。`busy_label` は UTF-8 で 48 バイトまで（超えると無しの扱い）。本システムは名前 `fk`・`operator: auto`・`busy_label`「測定操作中」で繋ぐ | **2026-11-05 本システムが確かめた。**頼み（測定機構の欄は分からないとき `null`）は hve が反映（hve `6411a6f`）。ss も確かめ、hve が作業パケットに切った（hve `2f415d3`・`7a5fe5a`）。**hve が実機に入れたと知らせるまで、この名前で実装しない・今の昇降部で上昇させない**（hve の指示） |
 
-| ss-system | ss [DetailedDesign-locate.md](../../../../ss-system/docs/plan/detailed/DetailedDesign-locate.md)（口の振る舞い）と ss [DetailedDesign-names.md](../../../../ss-system/docs/plan/detailed/DetailedDesign-names.md) §0・§3（名前）。アクション・後片付けの完了・状態の 3 つ。型は ss の `ss_ws/src/ss_msgs` を読み取り専用で取り込み、版は状態の `interface_version` で照合する | **2026-11-05 本システムが確かめた**（案のとおり。問い 1 件: ss の後片付けの上限の値）。**ss の確かめ済みの知らせが来るまで、この名前で実装しない** |
+| ss-system | ss [DetailedDesign-locate.md](../../../../ss-system/docs/plan/detailed/DetailedDesign-locate.md)（口の振る舞い）と ss [DetailedDesign-names.md](../../../../ss-system/docs/plan/detailed/DetailedDesign-names.md) §0・§3（名前）。アクション・後片付けの完了・状態の 3 つ。型は ss の `ss_ws/src/ss_msgs` を読み取り専用で取り込み、版は状態の `interface_version` で照合する | **2026-11-05 本システムが確かめ、ss が記録した**（ss `9cd9764`）。ss の後片付けの上限は暫定 30 s（結果を返してから数える）。**型 `ss_msgs` が ss のリポジトリに入るまで、本物の口（WP-AUTO-06）は作れない** |
 
 **名前は写さない**（写しは先方が直ったときに古いまま残る）。ss-system の名前は未定（[-open.md](DetailedDesign-open.md) §1）。決まるまで [-auto.md](DetailedDesign-auto.md) §1.3 の口は抽象のまま。
 
@@ -131,7 +131,7 @@ th 側の名前（`/measure/*`・`/map`・`/ui/active_screen`・`/safety/estop_u
 | `ss_status_stale_ms` | ms | 1000 | 先方（ss の勧め。ss の状態は 200 ms ごと。その 5 回分。届かなければ `ss_link_lost`） |
 | `ss_pos_std_max_m` | m | 0.15 | 暫定（盤を「確か」とみなす位置の標準偏差の上限。ss の配置図向けの精度の目標 ±15 cm に揃えた） |
 | `ss_yaw_std_max_deg` | ° | 5 | 暫定（同じく向き。ss の目標 ±5° に揃えた） |
-| `ss_cleanup_timeout_s` | s | 60 | 暫定（仕様は「一定時間」。結果か取り消しのあと、後片付けの完了を待つ上限。超えたら `ss_cleanup_timeout`。依頼から数えると、本システムが待つのは最長で `ss_result_timeout_s` ＋ これ） |
+| `ss_cleanup_timeout_s` | s | 60 | 暫定（仕様は「一定時間」。結果か取り消しのあと、後片付けの完了を待つ上限。超えたら `ss_cleanup_timeout`。依頼から数えると、本システムが待つのは最長で `ss_result_timeout_s` ＋ これ。**ss 自身の上限 `cleanup_timeout_s`（暫定 30 s。結果を返してから数える）より長くしておく**こと。ss は見直して 60 s に近づくときは先に知らせる） |
 | `ss_retry_max` | 回 | 2 | 暫定（ss の結果が使えないとき依頼し直す上限） |
 | `ss_pose_tol_m` | m | 0.02 | 暫定（ss の依頼の間に機体が動いていないとみなす差） |
 | `ss_pose_tol_rad` | rad | 0.02 | 暫定（同上） |
