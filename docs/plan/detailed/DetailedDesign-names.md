@@ -32,7 +32,9 @@
 | --- | --- | --- |
 | th-system | th [DetailedDesign-measure.md](../../../../th-system/docs/plan/detailed/DetailedDesign-measure.md)（通り道 §1・名前の一覧 §2・型 §3・画面 §4・入口の分離 §5）。型は th `th_ws/src/th_system_msgs` を取り込み、版 `interface_version` で照合する | **2026-11-04 本システムが確かめ、ユーザーが承認。**自己位置を見失ったときに目的地を取り消して返すことを th に頼み、th が反映した（th `6f1ca35`。[Spec-open.md](../spec/Spec-open.md) §1.2）。版は `"1"` のまま（th は実装前の案の直しでは上げない） |
 
-**名前は写さない**（写しは先方が直ったときに古いまま残る）。昇降機（hve-system）・ss-system の名前は未定（[-open.md](DetailedDesign-open.md) §1）。決まるまで [-auto.md](DetailedDesign-auto.md) §1.3 の口は抽象のまま。
+| hve-system（昇降部） | hve [DetailedDesign-protocol-modules.md](../../../../hve-system/docs/plan/detailed/DetailedDesign-protocol-modules.md)（**案**。今の実物は hve [DetailedDesign-protocol.md](../../../../hve-system/docs/plan/detailed/DetailedDesign-protocol.md) §2）。本システムは名前 `fk`・`operator: auto`・`busy_label`「測定操作中」で繋ぐ | **2026-11-05 本システムが確かめて返した**（頼み 1 件）。**hve の実装が入るまで、案の名前で実装しない**（hve の指示） |
+
+**名前は写さない**（写しは先方が直ったときに古いまま残る）。ss-system の名前は未定（[-open.md](DetailedDesign-open.md) §1）。決まるまで [-auto.md](DetailedDesign-auto.md) §1.3 の口は抽象のまま。
 
 ## 2. パッケージ・ノード・Python の名前
 
@@ -110,7 +112,9 @@ th 側の名前（`/measure/*`・`/map`・`/ui/active_screen`・`/safety/estop_u
 | `runner_stall_ms` | ms | 500 | 暫定（状態機械がこれより長く回らなければ生存確認を止める） |
 | `state_period_ms` | ms | 500 | 暫定 |
 | `th_status_stale_ms` | ms | 500 | 暫定（th の状態は 10 Hz。これより古ければ th の様子が読めないとみなし、動く指示を出さない） |
-| `lift_state_stale_ms` | ms | 500 | 暫定（昇降部の配信の周期が決まったら決め直す。WP-AUTO-05） |
+| `lift_state_stale_ms` | ms | 500 | 暫定（昇降部の配信は 100 ms（hve の仮値）。その 5 回分。hve も足りると確かめた） |
+| `lift_cmd_period_ms` | ms | 100 | 先方（hve の勧め。昇降部は 600 ms 命令が途切れると止まる） |
+| `lift_host` | — | `hve-lift.local` | 先方（hve の mDNS の名前）。引けなければ IP を設定で与える（直書きしない） |
 | `lift_drift_stop_mm` | mm | 50 | 暫定（[Spec-auto.md](../spec/Spec-auto.md) §4・`FK-V5`） |
 | `no_lower_move_max_m` | m | 0 | 暫定（`FK-V5`。毎回下げる） |
 | `lift_lower_timeout_s` | s | 60 | 暫定（下端まで下げきるのを待つ上限。超えたら `lift_not_lowered`） |

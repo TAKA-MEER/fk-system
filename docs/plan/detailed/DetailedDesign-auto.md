@@ -30,7 +30,7 @@
 | --- | --- | --- |
 | 機能側（`fk_auto`） | th と同じ PC の**別コンテナ `fk_robot`**。`--network host`・`ROS_DOMAIN_ID` 10・FastDDS は UDP だけ | th とは ROS 2 で直接（th [DetailedDesign-measure.md](../../../../th-system/docs/plan/detailed/DetailedDesign-measure.md) §1）。**UDP だけのプロファイルと型は th のリポジトリ（`../th-system`）のものをコンテナに入れて使い、写さない** |
 | 画面（`fk_web`） | 同じコンテナから静的に配信（ポートは -names.md §6） | **本システムの rosbridge**（別ポート）: 機能側への指示・状態・配置図・結果。**th の rosbridge（9090）**: 在席 `/ui/active_screen`・非常停止 `/safety/estop_ui`・ヘッダーと異常ウィンドウ（th DetailedDesign-measure.md §4） |
-| 昇降機（hve-system の昇降部） | — | **未定**（名前は hve が書くか未決。[-open.md](DetailedDesign-open.md) §1）。昇降部の WS（hve-system [DetailedDesign-protocol.md](../../../../hve-system/docs/plan/detailed/DetailedDesign-protocol.md) §2）には、まだ腕の状態も目標の高さへの移動も無い |
+| 昇降機（hve-system の昇降部） | — | **カメラモジュールと同じ WS の口に、名前 `fk` で繋ぐ**（hve が書き本システムが確かめる。2026-11-05。案は hve-system [DetailedDesign-protocol-modules.md](../../../../hve-system/docs/plan/detailed/DetailedDesign-protocol-modules.md)）。**hve の実装が入るまで案の名前で実装しない。今の昇降部は本システムの接続の上昇に天井を見ないので、それまで上昇させない** |
 | ss-system | — | **未定**（ss がどこで動き、何で通すか。[-open.md](DetailedDesign-open.md) §1） |
 
 **機能側は PC の起動と同時に立ち上げ、止めない。**th は自律測定へ入るときに生存確認を見る（th `SM-3.1.2-120`）。「許可する」を押す前から生存確認が出ている必要がある。
@@ -52,7 +52,7 @@
 | 口 | 機能側が読むもの | 機能側が出すもの | 名前 |
 | --- | --- | --- | --- |
 | **th** | モードと状態・自己位置と地図の世代・進行中の指示・止まった理由・入り直しの要否（`/measure/status`）／指示の結果（`/measure/result`）／腕が振れる範囲の確認 | 指示（`meas.goal`・`reroute`・`start`・`stop`・`abort`・`finish`）／生存確認 | **th の名前のまま**（th DetailedDesign-measure.md §2・§3）。`meas.turn`・`check_arm_clearance` は測定機構の側が使う |
-| **昇降機** | 下端に着いているか・高さ（読めるか）・原点が取れているか・いま操作している元・測定機構が付いているか・腕の制御器と通信できるか・腕が格納位置にあるか | 下端まで下げる・止める | **抽象のまま**（`LiftPort`）。名前が決まったら本物を作る（WP-AUTO-05） |
+| **昇降機** | 下端に着いているか・高さ（読めるか）・原点が取れているか・いま操作している元（人か自動か）・測定機構が付いているか・腕の制御器と通信できるか・腕が格納位置にあるか（**分からないものは「読めない」として扱う**） | 下端まで下げる（下降を下端に着くまで送り続ける）・止める・目標の高さへの移動 | `LiftPort`。名前は hve の案（§1.1）。hve の実装が入ったら本物を作る（WP-AUTO-05） |
 | **ss** | 結果（盤ごとの天面の矩形と確からしさ／空の一覧と理由）・後片付けの完了 | 依頼（方向の範囲）・取り消し | **抽象のまま**（`SsPort`）。WP-AUTO-06 |
 | **測定機構** | 盤ごとの立ち位置・腕が格納位置にあるか・盤前の作業の結果（[Spec-auto.md](../spec/Spec-auto.md) §1 の 3 つだけ） | 盤前の作業を始める・中止（腕を格納してから止める） | `ArmPort`。**最初の版は「測定機構なし」**（§2.3） |
 
@@ -82,6 +82,7 @@
 | --- | --- | --- |
 | th が `PAUSE`（人のジョグ・回復フォルト・通信途絶・§4.2 の停止） | `PAUSED`。**自分からは発進しない** | 人の「走行」（`auto.run`）→ §3 `can_run` が通れば `meas.start`。`GOAL` はそのまま続く。**`RECHECK` は、その段の頭からやり直す**（機体が動いたかもしれないため）。**`AT_PANEL` の間の一時停止は測定機構の口に知らせるだけにし、どうするかは測定機構の側で決める（未決。腕が出ている途中でジョグされたときの扱いは仕様に無い）** |
 | `/measure/result` が `CANCELLED`・`localization_lost`、または `reentry_required` | `REENTRY`。「走行」を受けない（[Spec-auto.md](../spec/Spec-auto.md) §9） | 人が自律測定を抜けて入り直す。**配置図は作り直す**（`PREPARE` → `SURVEY`。[Spec-auto.md](../spec/Spec-auto.md) §9）。**測り終えた盤の結果は一覧に残す**（`auto_runner` が起きている間は消さない） |
+| 本システムが昇降機を動かしている間に、人が昇降機を操作した（昇降部の「操作している元」が人に変わった） | 自分の昇降の命令を送るのをやめ、押し直さない。`PAUSED` と同じく人の「走行」を待つ（人が優先。[Spec-arm.md](../spec/Spec-arm.md) の「最後の操作が勝つ」） | 人の「走行」→ 今の段をやり直す |
 | 全体を止める場面（[Spec-auto.md](../spec/Spec-auto.md) §6 の下段・§7） | `HALTED`。th・昇降機・ss に新しい指示を出さない。理由を画面に出す | 人が抜ける |
 | 人の「中止」（`auto.abort`） | 走っていれば `meas.abort` で止めて `SELECT`。`AT_PANEL` なら測定機構の口に中止を渡し、腕の格納を待ってから `SELECT` | — |
 | 人の「終了」（`auto.finish`） | 腕が格納位置になければ、画面で確認が済んだ印（`arm_confirmed`）が要る。**腕の状態が読めないときも、格納位置にないのと同じに確認を求める**。`meas.finish` → `IDLE` | — |

@@ -243,7 +243,7 @@ th-system では 14 回マージしたのに計画書に反映されたのは 1 
 | `WP-AUTO-02` | 純関数（回る順・立ち位置・座標・関門・見張り・再開の条件） | — | 未着手（同上） |
 | `WP-AUTO-03` | 状態機械（測定機構なしの道で回り切る） | 01・02 | 未着手 |
 | `WP-AUTO-04` | 画面 | 03 | 未着手 |
-| `WP-AUTO-05` | 昇降機の口 | 01・**名前待ち**（[DetailedDesign-open.md](detailed/DetailedDesign-open.md) §1 #1） | 着手できない |
+| `WP-AUTO-05` | 昇降機の口 | 01・**hve の実装待ち**（名前は hve の案を 2026-11-05 に確かめた。[DetailedDesign-open.md](detailed/DetailedDesign-open.md) §1 #1） | 着手できない |
 | `WP-AUTO-06` | ss の口 | 01・**名前待ち**（同 #2） | 着手できない |
 
 ## 5. 各段階の確認方法
