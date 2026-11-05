@@ -70,7 +70,7 @@
 | `SELECT` | 人が盤を選んで「開始」（`auto.start`）するのを待つ。「もう一度探す」（`auto.rescan`）→ `SURVEY` | 開始 → 回る順を決めて（§3 `order_panels`）`LOWER` |
 | `LOWER` | 昇降機が下端でなければ下げる | 下端 → `GOAL`。下げられない → `HALTED` |
 | `GOAL` | 立ち位置（§3 `stand_pose`）へ `meas.goal`。`BLOCKED` が `blocked_wait_s` 続いたら `meas.reroute`（`reroute_max` 回まで） | `ARRIVED` → `RECHECK`。解けない → `meas.abort` → 飛ばす（`no_path`）。立てない（§3 `stand_blocked`）→ 出さずに飛ばす（`stand_blocked`） |
-| `RECHECK` | その盤の方向を ss に依頼して認識し直し、配置図を直す。立ち位置を求め直す。結果が使えなければ依頼し直す（`ss_retry_max` 回まで） | ずれが許容差内 → `AT_PANEL`。超える → 1 回だけ `GOAL` に戻る。2 回目も超える → 飛ばす（`stand_mismatch`）。見つからない → 飛ばす（`top_not_found`）。時間切れ・使える結果が得られない → 取り消して後片付けを待ち、飛ばす（`ss_failed`） |
+| `RECHECK` | その盤の方向を ss に依頼して認識し直し、配置図を直す。立ち位置を求め直す。結果が使えなければ依頼し直す（`ss_retry_max` 回まで） | ずれが許容差内 → `AT_PANEL`。超える → 1 回だけ `GOAL` に戻る。2 回目も超える → 飛ばす（`stand_mismatch`）。見つからない → 飛ばす（`top_not_found`）。ss が「必要な高さまで上がれない」を返した → 飛ばす（`camera_too_low`）。時間切れ・使える結果が得られない → 取り消して後片付けを待ち、飛ばす（`ss_failed`） |
 | `AT_PANEL` | 測定機構の口に盤前の作業を渡し、結果を待つ | 結果を記録 → 次の盤の `LOWER`。全部済み → `FINISH` |
 | `FINISH` | 昇降機を下げ、最後の盤の前で待つ。結果の一覧を出す | 人が選び直して「開始」→ `LOWER` |
 

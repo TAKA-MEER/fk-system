@@ -103,7 +103,7 @@ th 側の名前（`/measure/*`・`/map`・`/ui/active_screen`・`/safety/estop_u
 | 種類 | 名前 |
 | --- | --- |
 | 段（`phase`） | `IDLE` / `PREPARE` / `SURVEY` / `SELECT` / `LOWER` / `GOAL` / `RECHECK` / `AT_PANEL` / `FINISH` / `PAUSED` / `REENTRY` / `HALTED` |
-| 飛ばす理由（`PanelResult.reason`） | `no_path`（経路の再計算をしても解けない）/ `stand_blocked`（正面側の床が塞がっていて立てない）/ `stand_mismatch`（認識し直した立ち位置が許容差を超える）/ `top_not_found`（天面が見つからない）/ `arm_space_blocked`（腕が振れる範囲が左右とも塞がっている。測定機構の口が返す）/ `no_mechanism`（測定機構が付いていない）/ `ss_failed`（ss の結果が時間内に来ない・使える結果が得られない） |
+| 飛ばす理由（`PanelResult.reason`） | `no_path`（経路の再計算をしても解けない）/ `stand_blocked`（正面側の床が塞がっていて立てない）/ `stand_mismatch`（認識し直した立ち位置が許容差を超える）/ `top_not_found`（天面が見つからない）/ `arm_space_blocked`（腕が振れる範囲が左右とも塞がっている。測定機構の口が返す）/ `no_mechanism`（測定機構が付いていない）/ `ss_failed`（ss の結果が時間内に来ない・使える結果が得られない）/ `camera_too_low`（ss が撮る高さまでカメラを上げられない。天井が低い・天井の値が古いなど） |
 | 止める理由（`halt_reason`） | `arm_stuck`（腕が出たまま動けない）/ `lift_not_lowered`（昇降機を下げられない）/ `state_unreadable`（昇降機の高さか腕の状態が読めない）/ `ss_cleanup_timeout`（ss の後片付けの完了が来ない）/ `ss_link_lost`（ss と通信できない）/ `arm_link_lost`（腕が出ている間に腕の制御器と通信できない） |
 
 ## 5. パラメータ（`fk_bringup` の `params.yaml`。`auto_runner`）
