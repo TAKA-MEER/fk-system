@@ -74,7 +74,7 @@ th 側の名前（`/measure/*`・`/map`・`/ui/active_screen`・`/safety/estop_u
 | --- | --- |
 | `AutoCommand.srv` | `string command` / `string[] panel_ids`（`auto.start` だけ）/ `bool arm_confirmed`（`auto.finish` だけ。画面で腕の確認が済んだ）→ `bool accepted` / `string reject_reason` |
 | `AutoState.msg` | `std_msgs/Header header` / `string phase` / `string panel_id`（いま向かっている・作業中の盤）/ `string[] queue`（残りの順）/ `string halt_reason` / `string gate_reason`（関門で止めている理由。無ければ空）/ `bool lift_at_bottom` / `bool lift_readable` / `bool arm_stowed` / `bool mechanism_attached` / `bool reentry_required` / `string th_mode` / `string th_state` |
-| `Panel.msg` | `string panel_id` / `float64 x` / `float64 y`（天面の中心。map フレーム [m]）/ `float64 front_yaw`（正面の向き。盤から外向き [rad]）/ `float32 width_m` / `float32 depth_m` / `float32 top_height_m` / `float32 pos_std_m` / `float32 yaw_std_deg` / `int32 hangers`（ss の確からしさ）/ `bool confident`（しきい値を満たすか）/ `string row_id` |
+| `Panel.msg` | `string panel_id` / `float64 x` / `float64 y`（天面の中心。map フレーム [m]）/ `float64 front_yaw`（正面の向き。盤から外向き [rad]）/ `float32 width_m` / `float32 depth_m` / `float32 top_height_m` / `float32 pos_std_m` / `float32 yaw_std_deg` / `int32 hangers`（ss の確からしさ）/ `bool confident`（しきい値を満たすか）/ `bool ss_front_known`（ss が「正面が分かっている」と返した）/ `float64 ss_front_yaw`（そのときの ss の正面の向き。参考）/ `bool front_doubt`（ss の正面と、機体に向いていた辺が違う）/ `string row_id` |
 | `Layout.msg` | `std_msgs/Header header` / `string map_instance_id` / `Panel[] panels` / `float32[] unseen_from_rad` / `float32[] unseen_to_rad`（見ていない方向。map フレーム。ss が返す「実際に見た方位角の範囲」の残り） |
 | `PanelResult.msg` | `string panel_id` / `string result`（`DONE` / `SKIPPED`）/ `string reason` |
 | `PanelResults.msg` | `std_msgs/Header header` / `PanelResult[] results` |
