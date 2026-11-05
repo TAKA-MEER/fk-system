@@ -31,7 +31,7 @@
 | 機能側（`fk_auto`） | th と同じ PC の**別コンテナ `fk_robot`**。`--network host`・`ROS_DOMAIN_ID` 10・FastDDS は UDP だけ | th とは ROS 2 で直接（th [DetailedDesign-measure.md](../../../../th-system/docs/plan/detailed/DetailedDesign-measure.md) §1）。**UDP だけのプロファイルと型は th のリポジトリ（`../th-system`）のものをコンテナに入れて使い、写さない** |
 | 画面（`fk_web`） | 同じコンテナから静的に配信（ポートは -names.md §6） | **本システムの rosbridge**（別ポート）: 機能側への指示・状態・配置図・結果。**th の rosbridge（9090）**: 在席 `/ui/active_screen`・非常停止 `/safety/estop_ui`・ヘッダーと異常ウィンドウ（th DetailedDesign-measure.md §4） |
 | 昇降機（hve-system の昇降部） | — | **カメラモジュールと同じ WS の口に、名前 `fk` で繋ぐ**（hve が書き本システムが確かめる。2026-11-05。案は hve-system [DetailedDesign-protocol-modules.md](../../../../hve-system/docs/plan/detailed/DetailedDesign-protocol-modules.md)）。**hve の実装が入るまで案の名前で実装しない。今の昇降部は本システムの接続の上昇に天井を見ないので、それまで上昇させない** |
-| ss-system | 同じ PC の ss のコンテナ | **ROS 2 で直接**（設定は本システムと同じ。2026-11-05 ss のユーザー決定）。ss のアクション（依頼・取り消し・結果）と、後片付けの完了を知らせる別の口。**名前と形は ss が書く**（[-names.md](DetailedDesign-names.md) §1） |
+| ss-system | 同じ PC の ss のコンテナ | **ROS 2 で直接**（設定は本システムと同じ。2026-11-05 ss のユーザー決定）。ss のアクション（依頼・取り消し・結果）・後片付けの完了・状態の 3 つ。**名前と形は ss が書き、2026-11-05 に確かめた**（[-names.md](DetailedDesign-names.md) §1）。**ss の状態が `IDLE` でない間は、本システム以外の依頼でも ss が動かしているとみなす**（§4.1） |
 
 **機能側は PC の起動と同時に立ち上げ、止めない。**th は自律測定へ入るときに生存確認を見る（th `SM-3.1.2-120`）。「許可する」を押す前から生存確認が出ている必要がある。
 
@@ -66,7 +66,7 @@
 | --- | --- | --- |
 | `IDLE` | 自律測定の外。生存確認だけ出す | 画面が `auto.begin` を送り、th が `AUTO_MEASURE` → `PREPARE` |
 | `PREPARE` | 腕が格納位置か・昇降機の原点が取れているかを確かめる。原点が無ければ下端まで下げる（関門を通す） | 済み → `SURVEY`。下げられない → `HALTED` |
-| `SURVEY` | ss に全周を依頼し、結果を地図の座標に直して配置図にする（§3 `to_map`・`front_edge`）。**後片付けの完了まで待つ**。結果が使えない（§3 `ss_result_valid`）ときは依頼し直す（`ss_retry_max` 回まで） | 完了 → `SELECT`。結果が `ss_result_timeout_s` 来ない・使える結果が得られない → 取り消して後片付けを待ち、**空の配置図で `SELECT`**（理由を画面に出す。「もう一度探す」で探し直せる） |
+| `SURVEY` | ss に全周を依頼し、結果を地図の座標に直して配置図にする（§3 `to_map`・`front_edge`）。**後片付けの完了まで待つ**。結果が使えない（§3 `ss_result_valid`）ときは依頼し直す（`ss_retry_max` 回まで） | 完了 → `SELECT`。**途中で終わった結果（時間切れ・人の操作で中断など）も、返った盤と見た範囲を配置図に使う**（見ていない方向として示せる）。結果が来ない・使える結果が得られない → 取り消して後片付けを待ち、**空の配置図で `SELECT`**（理由を画面に出す。「もう一度探す」で探し直せる） |
 | `SELECT` | 人が盤を選んで「開始」（`auto.start`）するのを待つ。「もう一度探す」（`auto.rescan`）→ `SURVEY` | 開始 → 回る順を決めて（§3 `order_panels`）`LOWER` |
 | `LOWER` | 昇降機が下端でなければ下げる | 下端 → `GOAL`。下げられない → `HALTED` |
 | `GOAL` | 立ち位置（§3 `stand_pose`）へ `meas.goal`。`BLOCKED` が `blocked_wait_s` 続いたら `meas.reroute`（`reroute_max` 回まで） | `ARRIVED` → `RECHECK`。解けない → `meas.abort` → 飛ばす（`no_path`）。立てない（§3 `stand_blocked`）→ 出さずに飛ばす（`stand_blocked`） |
@@ -121,11 +121,11 @@
 
 | 出すもの | 通す条件（どれか 1 つでも欠ければ出さない） |
 | --- | --- |
-| `meas.goal`・`meas.start` | th の様子が読める（`th_status_stale_ms`）／昇降機が下端に着いている（高さが読める）／腕が格納位置にある（読めて。測定機構なしを除く）／ss の依頼が終わっている（後片付けの完了まで）／入り直しが要らない／th の版が合っている |
+| `meas.goal`・`meas.start` | th の様子が読める（`th_status_stale_ms`）／昇降機が下端に着いている（高さが読める）／腕が格納位置にある（読めて。測定機構なしを除く）／ss の依頼が終わっている（後片付けの完了まで。**ss の状態が `IDLE` で読めること。本システム以外の依頼も含む**）／入り直しが要らない／th の版が合っている |
 | `meas.reroute` | 上と同じ（走っている間に出すので、下端の条件も同じに見る） |
 | `meas.stop`・`meas.abort`・`meas.finish` | **いつでも通す**（止める側の指示は塞がない） |
 | **表に無い指示** | **出さない。**`meas.turn`・`meas.translate`・`meas.set_limits`・`meas.done` など測定機構の側やお立会試験で使う指示の条件は、その詳細設計でこの表に足す |
-| 昇降機を下げる | 腕が格納位置にある（測定機構なしを除く）／ss の依頼が終わっている／腕の制御器と通信できる（測定機構があるとき。[Spec-arm.md](../spec/Spec-arm.md)「通信できなくなったら昇降機も動かさない」） |
+| 昇降機を下げる | 腕が格納位置にある（測定機構なしを除く）／ss の依頼が終わっている（**ss の状態が `IDLE`。本システム以外の依頼も含む**）／腕の制御器と通信できる（測定機構があるとき。[Spec-arm.md](../spec/Spec-arm.md)「通信できなくなったら昇降機も動かさない」） |
 | ss への依頼 | th が `WAIT`／昇降機と腕の状態が読める／腕が格納位置にある |
 
 ### 4.2 走っている間の見張り（`drive_watch(snapshot)`）

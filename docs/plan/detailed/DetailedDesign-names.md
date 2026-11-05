@@ -34,7 +34,7 @@
 
 | hve-system（昇降部） | hve [DetailedDesign-names.md](../../../../hve-system/docs/plan/detailed/DetailedDesign-names.md)（2026-11-05 に案から移された）と [DetailedDesign-protocol-modules.md](../../../../hve-system/docs/plan/detailed/DetailedDesign-protocol-modules.md)。作業パケットは hve の段階 6（`WP-LIFT-13`・`14` ほか）。今の実物は hve [DetailedDesign-protocol.md](../../../../hve-system/docs/plan/detailed/DetailedDesign-protocol.md) §2。`busy_label` は UTF-8 で 48 バイトまで（超えると無しの扱い）。本システムは名前 `fk`・`operator: auto`・`busy_label`「測定操作中」で繋ぐ | **2026-11-05 本システムが確かめた。**頼み（測定機構の欄は分からないとき `null`）は hve が反映（hve `6411a6f`）。ss も確かめ、hve が作業パケットに切った（hve `2f415d3`・`7a5fe5a`）。**hve が実機に入れたと知らせるまで、この名前で実装しない・今の昇降部で上昇させない**（hve の指示） |
 
-| ss-system | ss の詳細設計（`docs/plan/detailed/`。**まだ書かれていない**）。ROS 2 のアクションの形（依頼・取り消し・結果）と、後片付けの完了を知らせる別の口 | 2026-11-05 ss のユーザー決定。ss が書いたら本システムが確かめる |
+| ss-system | ss [DetailedDesign-locate.md](../../../../ss-system/docs/plan/detailed/DetailedDesign-locate.md)（口の振る舞い）と ss [DetailedDesign-names.md](../../../../ss-system/docs/plan/detailed/DetailedDesign-names.md) §0・§3（名前）。アクション・後片付けの完了・状態の 3 つ。型は ss の `ss_ws/src/ss_msgs` を読み取り専用で取り込み、版は状態の `interface_version` で照合する | **2026-11-05 本システムが確かめた**（案のとおり。問い 1 件: ss の後片付けの上限の値）。**ss の確かめ済みの知らせが来るまで、この名前で実装しない** |
 
 **名前は写さない**（写しは先方が直ったときに古いまま残る）。ss-system の名前は未定（[-open.md](DetailedDesign-open.md) §1）。決まるまで [-auto.md](DetailedDesign-auto.md) §1.3 の口は抽象のまま。
 
@@ -74,7 +74,7 @@ th 側の名前（`/measure/*`・`/map`・`/ui/active_screen`・`/safety/estop_u
 | --- | --- |
 | `AutoCommand.srv` | `string command` / `string[] panel_ids`（`auto.start` だけ）/ `bool arm_confirmed`（`auto.finish` だけ。画面で腕の確認が済んだ）→ `bool accepted` / `string reject_reason` |
 | `AutoState.msg` | `std_msgs/Header header` / `string phase` / `string panel_id`（いま向かっている・作業中の盤）/ `string[] queue`（残りの順）/ `string halt_reason` / `string gate_reason`（関門で止めている理由。無ければ空）/ `bool lift_at_bottom` / `bool lift_readable` / `bool arm_stowed` / `bool mechanism_attached` / `bool reentry_required` / `string th_mode` / `string th_state` |
-| `Panel.msg` | `string panel_id` / `float64 x` / `float64 y`（天面の中心。map フレーム [m]）/ `float64 front_yaw`（正面の向き。盤から外向き [rad]）/ `float32 width_m` / `float32 depth_m` / `float32 top_height_m` / `float32 pos_std_m` / `float32 yaw_std_deg` / `int32 hangers`（ss の確からしさ）/ `bool confident`（しきい値を満たすか）/ `bool ss_front_known`（ss が「正面が分かっている」と返した）/ `float64 ss_front_yaw`（そのときの ss の正面の向き。参考）/ `bool front_doubt`（ss の正面と、機体に向いていた辺が違う）/ `string row_id` |
+| `Panel.msg` | `string panel_id` / `float64 x` / `float64 y`（天面の中心。map フレーム [m]）/ `float64 front_yaw`（正面の向き。盤から外向き [rad]）/ `float32 width_m` / `float32 depth_m` / `float32 top_height_m` / `float32 pos_std_m` / `float32 yaw_std_deg` / `int32 lugs`（ss の確からしさ。使った吊り金具の数。ss の名前に揃えた）/ `bool confident`（しきい値を満たすか）/ `bool ss_front_known`（ss が「正面が分かっている」と返した）/ `float64 ss_front_yaw`（そのときの ss の正面の向き。参考）/ `bool front_doubt`（ss の正面と、機体に向いていた辺が違う）/ `string row_id` |
 | `Layout.msg` | `std_msgs/Header header` / `string map_instance_id` / `Panel[] panels` / `float32[] unseen_from_rad` / `float32[] unseen_to_rad`（見ていない方向。map フレーム。ss が返す「実際に見た方位角の範囲」の残り） |
 | `PanelResult.msg` | `string panel_id` / `string result`（`DONE` / `SKIPPED`）/ `string reason` |
 | `PanelResults.msg` | `std_msgs/Header header` / `PanelResult[] results` |
@@ -128,6 +128,7 @@ th 側の名前（`/measure/*`・`/map`・`/ui/active_screen`・`/safety/estop_u
 | `reroute_max` | 回 | 3 | 暫定（仕様は「何回か」） |
 | `blocked_wait_s` | s | 5 | 暫定（`BLOCKED` がこれだけ続いたら経路の再計算を出す） |
 | `ss_result_timeout_s` | s | 300 | 暫定（ss へ制限時間として渡す。ss は過ぎたら「時間切れ」で後片付けして返す） |
+| `ss_status_stale_ms` | ms | 1000 | 先方（ss の勧め。ss の状態は 200 ms ごと。その 5 回分。届かなければ `ss_link_lost`） |
 | `ss_pos_std_max_m` | m | 0.15 | 暫定（盤を「確か」とみなす位置の標準偏差の上限。ss の配置図向けの精度の目標 ±15 cm に揃えた） |
 | `ss_yaw_std_max_deg` | ° | 5 | 暫定（同じく向き。ss の目標 ±5° に揃えた） |
 | `ss_cleanup_timeout_s` | s | 60 | 暫定（仕様は「一定時間」。結果か取り消しのあと、後片付けの完了を待つ上限。超えたら `ss_cleanup_timeout`。依頼から数えると、本システムが待つのは最長で `ss_result_timeout_s` ＋ これ） |
