@@ -5,7 +5,7 @@
 > **`DD-1`**: 名前を発明する余地をゼロにする。必要な名前が無いと分かったら、
 > **実装する前にこのファイルへ行を足す。**
 
-**2026-11-04: 自律測定の移動（[-auto.md](DetailedDesign-auto.md)）の名前を足した。案（ユーザーの確認待ち）。**接頭辞・名前空間・ポートは [-open.md](DetailedDesign-open.md) §1 で確かめてもらう。
+**2026-11-04: 自律測定の移動（[-auto.md](DetailedDesign-auto.md)）の名前を足した。**接頭辞・名前空間・ポート・コンテナ名（§0・§6）は **2026-11-05 ユーザー承認**。
 
 ---
 
@@ -14,7 +14,7 @@
 **th-system と同じ構成で作る**（2026-11-04 ユーザー決定。[Spec-open.md](../spec/Spec-open.md) `FK-A2`）ので、th-system [DetailedDesign-names.md](../../../../th-system/docs/plan/detailed/DetailedDesign-names.md) §0 に揃える
 （パッケージ接頭辞だけを本システム用に決める）。
 
-| 対象 | 規則（案） | 例 |
+| 対象 | 規則（2026-11-05 ユーザー承認） | 例 |
 | --- | --- | --- |
 | パッケージ | `fk_<領域>` | `fk_auto` |
 | トピック・サービス | **`/fk/<領域>/<名前>`**（th と同じ ROS 2 のドメインに居るので、th の名前空間とぶつからないよう `/fk/` を前に付ける） | `/fk/auto/state` |
@@ -135,8 +135,8 @@ th 側の名前（`/measure/*`・`/map`・`/ui/active_screen`・`/safety/estop_u
 
 | 名前 | 値 | 出どころ |
 | --- | --- | --- |
-| コンテナ | `fk_robot` | 案（th の `th_robot` に揃えた） |
-| `fk_rosbridge_port` | 9091 | 暫定（th の 9090 と分ける。WP-AUTO-01 で th が使うポートと重ならないことを確かめる） |
-| `fk_web_port` | 8091 | 暫定（同上） |
-| ワークスペース | リポジトリの `fk_ws/`（`fk_ws/src/<パッケージ>`） | 案（th の `th_ws/` に揃えた） |
+| コンテナ | `fk_robot` | 2026-11-05 ユーザー承認（th の `th_robot` に揃えた） |
+| `fk_rosbridge_port` | 9091 | 2026-11-05 ユーザー承認（th の 9090 と分ける。WP-AUTO-01 で th が使うポートと重ならないことを確かめる） |
+| `fk_web_port` | 8091 | 2026-11-05 ユーザー承認（同上） |
+| ワークスペース | リポジトリの `fk_ws/`（`fk_ws/src/<パッケージ>`） | 2026-11-05 ユーザー承認（th の `th_ws/` に揃えた） |
 | th の型と UDP プロファイル | `../th-system` の `th_ws/src/th_system_msgs` と `th_ws/scripts/vibe_measure/fastdds_udp.xml` を読み取り専用でコンテナに入れる（写さない） | th DetailedDesign-measure.md §1 |
