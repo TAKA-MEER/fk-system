@@ -32,7 +32,7 @@
 | --- | --- | --- |
 | th-system | th [DetailedDesign-measure.md](../../../../th-system/docs/plan/detailed/DetailedDesign-measure.md)（通り道 §1・名前の一覧 §2・型 §3・画面 §4・入口の分離 §5）。型は th `th_ws/src/th_system_msgs` を取り込み、版 `interface_version` で照合する | **2026-11-04 本システムが確かめ、ユーザーが承認。**自己位置を見失ったときに目的地を取り消して返すことを th に頼み、th が反映した（th `6f1ca35`。[Spec-open.md](../spec/Spec-open.md) §1.2）。版は `"1"` のまま（th は実装前の案の直しでは上げない） |
 
-| hve-system（昇降部） | hve [DetailedDesign-protocol-modules.md](../../../../hve-system/docs/plan/detailed/DetailedDesign-protocol-modules.md)（**案**。今の実物は hve [DetailedDesign-protocol.md](../../../../hve-system/docs/plan/detailed/DetailedDesign-protocol.md) §2）。本システムは名前 `fk`・`operator: auto`・`busy_label`「測定操作中」で繋ぐ | **2026-11-05 本システムが確かめた。**頼み（測定機構の欄は分からないとき `null`）は hve が反映（hve `6411a6f`）。ss の確認待ち。**hve の実装が入るまで、案の名前で実装しない**（hve の指示） |
+| hve-system（昇降部） | hve [DetailedDesign-names.md](../../../../hve-system/docs/plan/detailed/DetailedDesign-names.md)（2026-11-05 に案から移された）と [DetailedDesign-protocol-modules.md](../../../../hve-system/docs/plan/detailed/DetailedDesign-protocol-modules.md)。作業パケットは hve の段階 6（`WP-LIFT-13`・`14` ほか）。今の実物は hve [DetailedDesign-protocol.md](../../../../hve-system/docs/plan/detailed/DetailedDesign-protocol.md) §2。`busy_label` は UTF-8 で 48 バイトまで（超えると無しの扱い）。本システムは名前 `fk`・`operator: auto`・`busy_label`「測定操作中」で繋ぐ | **2026-11-05 本システムが確かめた。**頼み（測定機構の欄は分からないとき `null`）は hve が反映（hve `6411a6f`）。ss も確かめ、hve が作業パケットに切った（hve `2f415d3`・`7a5fe5a`）。**hve が実機に入れたと知らせるまで、この名前で実装しない・今の昇降部で上昇させない**（hve の指示） |
 
 | ss-system | ss の詳細設計（`docs/plan/detailed/`。**まだ書かれていない**）。ROS 2 のアクションの形（依頼・取り消し・結果）と、後片付けの完了を知らせる別の口 | 2026-11-05 ss のユーザー決定。ss が書いたら本システムが確かめる |
 
