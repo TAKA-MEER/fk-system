@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, List, Optional, Sequence, Tuple
 
@@ -488,3 +488,241 @@ def ss_result_valid(at_request: Optional[ThStatus], at_result: Optional[ThStatus
     if math.hypot(at_result.x - at_request.x, at_result.y - at_request.y) > ss_pose_tol_m:
         return False
     return abs(angle_diff(at_result.yaw, at_request.yaw)) <= ss_pose_tol_rad
+
+
+# ---------------------------------------------------------------------------
+# 読めるかの判定（共通）
+# ---------------------------------------------------------------------------
+
+def _fresh(read_ms: Optional[float], now_ms: float, stale_ms: float) -> bool:
+    """読めた時刻があり、今から stale_ms を超えて古くない。"""
+    return read_ms is not None and (now_ms - read_ms) <= stale_ms
+
+
+def _th_readable(s: Snapshot, p: Params) -> bool:
+    return s.th is not None and _fresh(s.th.read_ms, s.now_ms, p.th_status_stale_ms)
+
+
+def _lift_height_readable(s: Snapshot, p: Params) -> bool:
+    return (s.lift is not None and s.lift.at_bottom is not None
+            and _fresh(s.lift.height_read_ms, s.now_ms, p.lift_state_stale_ms))
+
+
+def _mechanism_absent(s: Snapshot) -> bool:
+    """測定機構が付いていないと読めたときだけ True。分からないときは付いているとみなす。"""
+    return s.lift is not None and s.lift.mechanism_attached is False
+
+
+def _arm_readable(s: Snapshot, p: Params) -> bool:
+    return (s.lift is not None and s.lift.arm_stowed is not None
+            and _fresh(s.lift.arm_read_ms, s.now_ms, p.lift_state_stale_ms))
+
+
+def _ss_readable(s: Snapshot, p: Params) -> bool:
+    return (s.ss is not None and s.ss.state is not None
+            and _fresh(s.ss.read_ms, s.now_ms, p.ss_status_stale_ms))
+
+
+def _arm_reason(s: Snapshot, p: Params) -> Optional[str]:
+    """腕の条件（格納位置にある。測定機構なしを除く）。満たさなければ理由キー。"""
+    if _mechanism_absent(s):
+        return None
+    if not _arm_readable(s, p):
+        return "state_unreadable"
+    if not s.lift.arm_stowed:
+        return "arm_not_stowed"
+    return None
+
+
+def _ss_reason(s: Snapshot, p: Params) -> Optional[str]:
+    """ss の依頼が終わっている（状態が IDLE。本システム以外の依頼も含む）。"""
+    if not _ss_readable(s, p):
+        return "state_unreadable"
+    if s.ss.state != "IDLE":
+        return "ss_busy"
+    return None
+
+
+# ---------------------------------------------------------------------------
+# gate・drive_watch（DetailedDesign-auto.md §4）
+# ---------------------------------------------------------------------------
+
+# 関門に渡す指示。th への指示は th の名前のまま（names.md §4.2・th の文書）。
+# 昇降機を下げる・ss への依頼は、関門の中だけの名前（外には出さない。DetailedDesign-names.md §2）。
+CMD_LIFT_LOWER = "lift.lower"
+CMD_SS_REQUEST = "ss.request"
+_MOVING_COMMANDS = ("meas.goal", "meas.start", "meas.reroute")
+_ALWAYS_COMMANDS = ("meas.stop", "meas.abort", "meas.finish")
+
+
+def gate(command: str, snapshot: Snapshot, params: Params = Params()) -> GateResult:
+    """th への指示と昇降機への命令の関門。通すなら allowed、通さないなら理由キー。
+
+    条件が複数欠けたときは、次の順で最初に当たった 1 つを返す。
+    - meas.goal・meas.start・meas.reroute: th の様子（読めない → state_unreadable）→ th の版
+      （version_mismatch）→ 入り直し（reentry_required）→ 昇降機の高さ（読めない → state_unreadable、
+      下端でない → lift_not_bottom）→ 腕（読めない → state_unreadable、格納位置でない →
+      arm_not_stowed）→ ss（読めない → state_unreadable、IDLE でない → ss_busy）。
+    - meas.stop・meas.abort・meas.finish: いつでも通す。
+    - 昇降機を下げる（CMD_LIFT_LOWER）: 腕の通信（arm_link_lost。通信が切れていれば腕の状態が読めない
+      のも当然なので先に見る）→ 腕 → ss。
+    - ss への依頼（CMD_SS_REQUEST）: th（読めない → state_unreadable、WAIT でない → th_not_waiting）
+      → 昇降機の高さが読める（state_unreadable）→ 腕（読めない → state_unreadable、格納位置でない →
+      arm_not_stowed）。
+    - 表に無い指示は not_listed。
+    測定機構が付いていないと読めたときだけ腕の条件（通信を含む）を外す。
+    """
+    s, p = snapshot, params
+    if command in _ALWAYS_COMMANDS:
+        return GateResult(True)
+    if command in _MOVING_COMMANDS:
+        if not _th_readable(s, p):
+            return GateResult(False, "state_unreadable")
+        if s.th.interface_version != p.th_interface_version:
+            return GateResult(False, "version_mismatch")
+        if s.th.reentry_required:
+            return GateResult(False, "reentry_required")
+        if not _lift_height_readable(s, p):
+            return GateResult(False, "state_unreadable")
+        if not s.lift.at_bottom:
+            return GateResult(False, "lift_not_bottom")
+        r = _arm_reason(s, p) or _ss_reason(s, p)
+        return GateResult(False, r) if r else GateResult(True)
+    if command == CMD_LIFT_LOWER:
+        if not _mechanism_absent(s) and (s.lift is None or s.lift.arm_link_ok is not True):
+            return GateResult(False, "arm_link_lost")
+        r = _arm_reason(s, p) or _ss_reason(s, p)
+        return GateResult(False, r) if r else GateResult(True)
+    if command == CMD_SS_REQUEST:
+        if not _th_readable(s, p):
+            return GateResult(False, "state_unreadable")
+        if s.th.state != "WAIT":
+            return GateResult(False, "th_not_waiting")
+        if not _lift_height_readable(s, p):
+            return GateResult(False, "state_unreadable")
+        r = _arm_reason(s, p)
+        return GateResult(False, r) if r else GateResult(True)
+    return GateResult(False, "not_listed")
+
+
+_WATCHED_TH_STATES = ("NAV", "ALIGN", "BLOCKED")
+
+
+def drive_watch(snapshot: Snapshot, params: Params = Params()) -> WatchResult:
+    """走っている間の見張り。止めるなら stop=True と理由キー。
+
+    th の状態が NAV・ALIGN・BLOCKED のときだけ見る（ADJUST を含むそれ以外・th が読めないときは
+    何もしない。th が読めなければ関門が動く指示を通さず、停止は th 側の途絶の扱いに任せる）。
+    昇降機の高さか腕の状態（測定機構なしを除く）が lift_state_stale_ms を超えて届かない →
+    state_unreadable。下端から lift_drift_stop_mm 以上離れた → lift_drift。
+    """
+    s, p = snapshot, params
+    if not _th_readable(s, p) or s.th.state not in _WATCHED_TH_STATES:
+        return WatchResult(False)
+    height_ok = (s.lift is not None and s.lift.height_above_bottom_mm is not None
+                 and _fresh(s.lift.height_read_ms, s.now_ms, p.lift_state_stale_ms))
+    if not height_ok:
+        return WatchResult(True, "state_unreadable")
+    if not _mechanism_absent(s) and not _arm_readable(s, p):
+        return WatchResult(True, "state_unreadable")
+    if s.lift.height_above_bottom_mm >= p.lift_drift_stop_mm:
+        return WatchResult(True, "lift_drift")
+    return WatchResult(False)
+
+
+# ---------------------------------------------------------------------------
+# can_run
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class RunDecision:
+    """人の「走行」の結果。kind は "run"（meas.start を出してよい）・"lower_first"（先に下げる）・
+    "reject"（拒否。reason に理由キー）。"""
+    kind: str
+    reason: Optional[str] = None
+
+
+def can_run(snapshot: Snapshot, params: Params = Params()) -> RunDecision:
+    """人の「走行」で発進してよいか。
+
+    拒否の順: th の様子（state_unreadable）→ 版（version_mismatch）→ 入り直し（reentry_required）→
+    th が PAUSE でない（phase_not_accepting）→ 腕（state_unreadable・arm_not_stowed）→
+    ss（state_unreadable・ss_busy）→ 昇降機の高さが読めない（state_unreadable）。
+    すべて通って下端でなければ「先に下げる」（拒否ではない）。
+    """
+    s, p = snapshot, params
+    if not _th_readable(s, p):
+        return RunDecision("reject", "state_unreadable")
+    if s.th.interface_version != p.th_interface_version:
+        return RunDecision("reject", "version_mismatch")
+    if s.th.reentry_required:
+        return RunDecision("reject", "reentry_required")
+    if s.th.state != "PAUSE":
+        return RunDecision("reject", "phase_not_accepting")
+    r = _arm_reason(s, p) or _ss_reason(s, p)
+    if r:
+        return RunDecision("reject", r)
+    if not _lift_height_readable(s, p):
+        return RunDecision("reject", "state_unreadable")
+    if not s.lift.at_bottom:
+        return RunDecision("lower_first")
+    return RunDecision("run")
+
+
+# ---------------------------------------------------------------------------
+# classify_skip・classify_halt
+# ---------------------------------------------------------------------------
+
+class SkipEvent(Enum):
+    """盤を飛ばす出来事（DetailedDesign-auto.md §2.1。Spec-auto.md §6 の上段）。"""
+    PATH_NOT_FOUND = 1           # 経路の再計算をしても解けない
+    STAND_AREA_OCCUPIED = 2      # 正面側の床が地図で塞がっていて立てない
+    STAND_MISMATCH_TWICE = 3     # 認識し直した立ち位置が、目的地を 1 回出し直してもまだ許容差を超える
+    TOP_NOT_FOUND = 4            # 着いて認識し直しても天面が見つからない（確からしさ不足を含む）
+    ARM_SPACE_BLOCKED = 5        # 腕が振れる範囲が左右とも塞がっている（測定機構の口が返す）
+    MECHANISM_ABSENT = 6         # 測定機構が付いていない
+    SS_TIMEOUT = 7               # ss の結果が時間内に来ない
+    SS_RESULT_UNUSABLE = 8       # 依頼し直しても使える結果が得られない
+    CAMERA_TOO_LOW = 9           # ss が必要な高さまで上がれない
+
+
+class HaltEvent(Enum):
+    """全体を止める出来事（Spec-auto.md §6 の下段・§7）。"""
+    ARM_STUCK = 1                # 腕が出たまま動けない
+    LIFT_CANNOT_LOWER = 2        # 昇降機を下げられない
+    LIFT_OR_ARM_UNREADABLE = 3   # 昇降機の高さか腕の状態が読めない
+    SS_CLEANUP_NOT_DONE = 4      # ss の後片付けの完了が来ない
+    SS_LINK_LOST = 5             # ss と通信できない
+    ARM_LINK_LOST = 6            # 腕が出ている間に腕の制御器と通信できない
+
+
+_SKIP_REASONS = {
+    SkipEvent.PATH_NOT_FOUND: "no_path",
+    SkipEvent.STAND_AREA_OCCUPIED: "stand_blocked",
+    SkipEvent.STAND_MISMATCH_TWICE: "stand_mismatch",
+    SkipEvent.TOP_NOT_FOUND: "top_not_found",
+    SkipEvent.ARM_SPACE_BLOCKED: "arm_space_blocked",
+    SkipEvent.MECHANISM_ABSENT: "no_mechanism",
+    SkipEvent.SS_TIMEOUT: "ss_failed",
+    SkipEvent.SS_RESULT_UNUSABLE: "ss_failed",
+    SkipEvent.CAMERA_TOO_LOW: "camera_too_low",
+}
+
+_HALT_REASONS = {
+    HaltEvent.ARM_STUCK: "arm_stuck",
+    HaltEvent.LIFT_CANNOT_LOWER: "lift_not_lowered",
+    HaltEvent.LIFT_OR_ARM_UNREADABLE: "state_unreadable",
+    HaltEvent.SS_CLEANUP_NOT_DONE: "ss_cleanup_timeout",
+    HaltEvent.SS_LINK_LOST: "ss_link_lost",
+    HaltEvent.ARM_LINK_LOST: "arm_link_lost",
+}
+
+
+def classify_skip(event: SkipEvent) -> str:
+    """飛ばす出来事 → 飛ばす理由キー（names.md §4.3）。"""
+    return _SKIP_REASONS[event]
+
+
+def classify_halt(event: HaltEvent) -> str:
+    """止める出来事 → 止める理由キー（names.md §4.3）。"""
+    return _HALT_REASONS[event]
