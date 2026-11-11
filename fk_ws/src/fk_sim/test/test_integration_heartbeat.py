@@ -55,3 +55,16 @@ def test_d_th_status_stale_is_state_unreadable(harness):
     assert wait_until(lambda: h.gate_reason == '', MARGIN_S + STALE_S)
     h.fake.stop_status()
     assert wait_until(lambda: h.gate_reason == 'state_unreadable', STALE_S + STATE_S + MARGIN_S)
+
+
+def test_c2_step_that_cannot_finish_stops_heartbeat(harness):
+    """(c') step が最後まで回らない（例外で止まる）と、回った時刻は更新されず、生存確認が止まる。
+    step を呼び終えてから「回った時刻」を記録することを縛る（呼ぶ前に記録すると生存確認が出続ける）。"""
+    h = harness
+    assert wait_until(h.fake.link_ok, MARGIN_S + LINK_TIMEOUT_S)
+    h.break_step = True
+    assert wait_until(lambda: not h.fake.link_ok(), STALL_S + LINK_TIMEOUT_S + MARGIN_S)
+    assert h.errors                                       # step の失敗は握りつぶされず表に出ている
+    assert not h.runner._hb_timer.is_canceled()
+    h.break_step = False
+    assert wait_until(h.fake.link_ok, MARGIN_S + LINK_TIMEOUT_S)
