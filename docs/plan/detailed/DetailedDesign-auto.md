@@ -5,7 +5,7 @@
 盤前で腕を起こしてから格納するまで（測定機構の制御。[Spec-arm.md](../spec/Spec-arm.md)）は**ここでは扱わない**（§1.3 の「測定機構の口」の向こう側）。
 名前はすべて [-names.md](DetailedDesign-names.md)（`DD-1`）、値と出どころは [-names.md](DetailedDesign-names.md) §5（`DD-3`）。
 
-**状態: 案（ユーザーの確認待ち。2026-11-04 初版）。**決めてもらうことは [-open.md](DetailedDesign-open.md) §1。
+**状態: 確定（2026-11-11 ユーザー。2026-11-04 初版）。**立った問いと答えは [-open.md](DetailedDesign-open.md) §1。
 
 ---
 

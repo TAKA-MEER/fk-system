@@ -12,13 +12,13 @@
 
 ## 1. 今どこにいるか
 
-**最終同期: 2026-11-04**（`main` = 設計文書のみ。マージなし）。更新のしかたは §2.3「計画書を都度更新する」。
+**最終同期: 2026-11-11**（`main` = 設計文書のみ。マージなし）。更新のしかたは §2.3「計画書を都度更新する」。
 
 | | 状態 |
 | --- | --- |
 | 仕様書（何が・どう振る舞うべきか） | **対象（膜厚・板厚）・2 つの測定モードの流れ・画面の入口・移動の役割分担（本システムは判断、th-system は制御）・画像認識を ss-system に分けること（欲しい情報を渡し、カメラは ss-system が動かす）・昇降機の操作権限（本システムと ss-system）・測定機構でできること（昇降機と一緒に上下・前後）と制御の分担（アームの制御器と昇降機の制御器。アームに任せる範囲・腕が出ている間の決まり・原点取りを含む）まで決定。**安全（`FK-X4`。`FK-X1` は 2026-11-04 決定）・各システムとのやり取り（[Spec-open.md](spec/Spec-open.md) `FK-A1`）・値は未定 |
-| 詳細設計書（どう実装するか） | 骨格のみ |
-| 実装 | **未着手** |
+| 詳細設計書（どう実装するか） | **自律測定の移動は確定**（2026-11-11 ユーザー。[DetailedDesign-auto.md](detailed/DetailedDesign-auto.md)）。ほかは骨格のみ |
+| 実装 | **`WP-AUTO-01`・`02` に着手**（2026-11-11。Sonnet のサブエージェント。§2.1） |
 
 ### 状態の書き方（証拠の水準）
 
@@ -51,6 +51,7 @@
 **1 作業パケット ＝ 1 ブリーフ ＝ 1 エージェント**。並行数は作業の独立性で決める。
 
 **どのエージェントに投げるか**（th-system 2026-10-26 ユーザー決定に揃えた）: **まず codex。利用枠の上限が来たら opencode。**
+**2026-11-11 ユーザー: codex・opencode とも無料枠を使い切ったので、Sonnet（Claude Code のサブエージェント。`Agent` の `model: sonnet`）で実装する。**worktree は実装管理担当が `git worktree add` で th-system と同じ階層（`../fk-system-<パケット>`。`../th-system` を同じ相対パスで引けるように）に切り、ブリーフで場所とブランチを渡す。ブリーフ・一時ファイル・コミット・push の決まりは下の herdr の表と同じ。
 
 | 項目 | codex | opencode |
 | --- | --- | --- |
@@ -239,8 +240,8 @@ th-system では 14 回マージしたのに計画書に反映されたのは 1 
 
 | WP | 中身 | 依存 | 状態 |
 | --- | --- | --- | --- |
-| `WP-AUTO-01` | 土台（コンテナ・th の型の取り込み・生存確認と版の照合・偽の th） | th の型（2026-11-11 に申し送りで先に入れてもらった。**th の作業ブランチ `feat/era3-measure` の `a33dd9a` に固定して取り込む**。th の `main` へのマージは確認期の試験のあと。[Spec-open.md](spec/Spec-open.md) §1.2） | 未着手（詳細設計のユーザー確認待ち） |
-| `WP-AUTO-02` | 純関数（回る順・立ち位置・座標・関門・見張り・再開の条件） | — | 未着手（同上） |
+| `WP-AUTO-01` | 土台（コンテナ・th の型の取り込み・生存確認と版の照合・偽の th） | th の型（2026-11-11 に申し送りで先に入れてもらった。**th の作業ブランチ `feat/era3-measure` の `a33dd9a` に固定して取り込む**。th の `main` へのマージは確認期の試験のあと。[Spec-open.md](spec/Spec-open.md) §1.2） | **着手**（2026-11-11。Sonnet。`feat/wp-auto-01-base`） |
+| `WP-AUTO-02` | 純関数（回る順・立ち位置・座標・関門・見張り・再開の条件） | — | **着手**（2026-11-11。Sonnet。`feat/wp-auto-02-core`） |
 | `WP-AUTO-03` | 状態機械（測定機構なしの道で回り切る） | 01・02 | 未着手 |
 | `WP-AUTO-04` | 画面 | 03 | 未着手 |
 | `WP-AUTO-05` | 昇降機の口 | 01・**hve の実装待ち**（hve の `WP-LIFT-13`・`14` ほか。実機に入ったら hve が知らせる。名前は 2026-11-05 に確かめた。[DetailedDesign-open.md](detailed/DetailedDesign-open.md) §1 #1） | 着手できない |
@@ -267,7 +268,7 @@ th-system では 14 回マージしたのに計画書に反映されたのは 1 
 | ~~5~~ | ~~目標（`FK-G1`）と設計思想を決め、[Spec.md](spec/Spec.md) §3・§4 を埋める~~ | **済**（2026-11-01。th-system の考え方を大まかに引き継ぎ、目標というほど厳密にはしない） |
 | 6 | 領域ごとの Spec ファイルを足す | 一部済（2026-11-04。[Spec-auto.md](spec/Spec-auto.md)＝自律測定の移動の決まり） |
 | 7 | 使う道具を決め（`FK-A2`。**PC 側は 2026-11-04 決定**: th-system と同じ PC で同じ構成、コンテナとポートは別。残りはアームの制御器のファーム）、`CLAUDE.md`「ビルドとテスト」・`.gitignore` を足す | 一部済（2026-11-04） |
-| 8 | 詳細設計・作業パケットの切り出し。**自律測定の移動から先に始める**（2026-11-04。測定機構の確定を待たない。移動の振る舞いは [Spec-auto.md](spec/Spec-auto.md) で決めた。th 側の名前は th-system が書き、2026-11-04 に確かめた（th [DetailedDesign-measure.md](../../../th-system/docs/plan/detailed/DetailedDesign-measure.md)）） | **着手（2026-11-04）**: [DetailedDesign-auto.md](detailed/DetailedDesign-auto.md) を案として書いた。ユーザーの確認待ち（[DetailedDesign-open.md](detailed/DetailedDesign-open.md) §1）。作業パケットは §4 |
+| 8 | 詳細設計・作業パケットの切り出し。**自律測定の移動から先に始める**（2026-11-04。測定機構の確定を待たない。移動の振る舞いは [Spec-auto.md](spec/Spec-auto.md) で決めた。th 側の名前は th-system が書き、2026-11-04 に確かめた（th [DetailedDesign-measure.md](../../../th-system/docs/plan/detailed/DetailedDesign-measure.md)）） | **確定（2026-11-11 ユーザー）**: [DetailedDesign-auto.md](detailed/DetailedDesign-auto.md)。作業パケットは §4（01・02 に着手） |
 
 ## 7. 関連文書
 

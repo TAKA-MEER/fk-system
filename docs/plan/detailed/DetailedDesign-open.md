@@ -6,7 +6,7 @@
 
 ## 1. 詳細設計側の未確定事項
 
-[-auto.md](DetailedDesign-auto.md)（2026-11-04 初版）を書いて立った問い。**2026-11-05 ユーザー: #3 は承認。#1・#2 は hve・ss と相談する**（[Spec-open.md](../spec/Spec-open.md) §1.2）。
+[-auto.md](DetailedDesign-auto.md)（2026-11-04 初版）を書いて立った問い。**2026-11-05 ユーザー: #3 は承認。#1・#2 は hve・ss と相談する**（[Spec-open.md](../spec/Spec-open.md) §1.2）。**2026-11-11 ユーザー: [-auto.md](DetailedDesign-auto.md) を確定とする。**
 
 | # | 問い | 案 | 止まるもの |
 | --- | --- | --- | --- |

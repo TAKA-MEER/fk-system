@@ -54,6 +54,9 @@
 | `ThPort`・`LiftPort`・`SsPort`・`ArmPort` | 口（[-auto.md](DetailedDesign-auto.md) §1.3） |
 | `FakeTh`・`FakeLift`・`FakeSs`・`NoMechanism` | 偽の口（ROS 2 なしの試験用）。`NoMechanism` は最初の版の測定機構の口（測定機構なし） |
 | `to_map`・`front_edge`・`is_confident`・`group_rows`・`order_panels`・`stand_pose`・`stand_blocked`・`needs_regoal`・`ss_result_valid`・`can_run`・`classify_skip`・`classify_halt`・`gate`・`drive_watch` | 純関数（[-auto.md](DetailedDesign-auto.md) §3・§4） |
+| `TH_INTERFACE_VERSION` | 取り込んだ th の型の版（`"1"`。th [DetailedDesign-measure.md](../../../../th-system/docs/plan/detailed/DetailedDesign-measure.md) §1.2）。生存確認に載せ、`/measure/status` の版と比べる。**`fk_ws/th_ref`（§7）を進めるときに一緒に見直す**（2026-11-11） |
+
+外に出る文字列（段・理由・指示・パラメータ・トピック・型の欄）はこの文書にあるものだけを使う。**Python の中だけの名前（関数の引数・dataclass の欄・内部の列挙・試験の名前）は実装者が決めてよい**（2026-11-11）。パラメータを dataclass で受けるときは、欄の名前を §5 の名前に揃える。
 
 ## 3. トピック・サービス（本システム側）
 
@@ -104,6 +107,7 @@ th 側の名前（`/measure/*`・`/map`・`/ui/active_screen`・`/safety/estop_u
 | --- | --- |
 | 段（`phase`） | `IDLE` / `PREPARE` / `SURVEY` / `SELECT` / `LOWER` / `GOAL` / `RECHECK` / `AT_PANEL` / `FINISH` / `PAUSED` / `REENTRY` / `HALTED` |
 | 飛ばす理由（`PanelResult.reason`） | `no_path`（経路の再計算をしても解けない）/ `stand_blocked`（正面側の床が塞がっていて立てない）/ `stand_mismatch`（認識し直した立ち位置が許容差を超える）/ `top_not_found`（天面が見つからない）/ `arm_space_blocked`（腕が振れる範囲が左右とも塞がっている。測定機構の口が返す）/ `no_mechanism`（測定機構が付いていない）/ `ss_failed`（ss の結果が時間内に来ない・使える結果が得られない）/ `camera_too_low`（ss が撮る高さまでカメラを上げられない。天井が低い・天井の値が古いなど） |
+| 関門と見張りの理由（`AutoState.gate_reason`。`AutoCommand` の `reject_reason` にも使う） | §4.2 の `lift_not_bottom`・`arm_not_stowed`・`ss_busy`・`state_unreadable`（th の様子・昇降機の高さ・腕の状態・ss の状態のどれかが読めない）・`reentry_required`・`version_mismatch` に加えて、**2026-11-11 に足した**: `th_not_waiting`（ss への依頼で th が `WAIT` でない）/ `arm_link_lost`（測定機構があるのに腕の制御器と通信できない。止める理由と同じキー）/ `not_listed`（関門の表に無い指示。[-auto.md](DetailedDesign-auto.md) §4.1）/ `lift_drift`（走っている間に昇降機が下端から `lift_drift_stop_mm` 以上離れた。見張り §4.2） |
 | 止める理由（`halt_reason`） | `arm_stuck`（腕が出たまま動けない）/ `lift_not_lowered`（昇降機を下げられない）/ `state_unreadable`（昇降機の高さか腕の状態が読めない）/ `ss_cleanup_timeout`（ss の後片付けの完了が来ない）/ `ss_link_lost`（ss と通信できない）/ `arm_link_lost`（腕が出ている間に腕の制御器と通信できない） |
 
 ## 5. パラメータ（`fk_bringup` の `params.yaml`。`auto_runner`）
@@ -137,8 +141,20 @@ th 側の名前（`/measure/*`・`/map`・`/ui/active_screen`・`/safety/estop_u
 | `ss_pose_tol_rad` | rad | 0.02 | 暫定（同上） |
 | `row_yaw_tol_rad` | rad | 0.17 | 暫定（約 10°。同じ列とみなす正面の向きの差） |
 | `row_gap_max_m` | m | 0.3 | 暫定（同じ列とみなす隣との隙間） |
+| `footprint_half_m` | m | 0.275 | 先方（th の機体の外形 0.55 m 角の半分。th [DetailedDesign-measure.md](../../../../th-system/docs/plan/detailed/DetailedDesign-measure.md) §3.5）。`stand_blocked` が立ち位置に置く機体の形（正方形）。2026-11-11 に足した |
+| `map_occupied_min` | — | 1 | 暫定（`/map` のマスの値がこれ以上なら塞がっているとみなす。slam_toolbox は 0・100・−1 しか出さないので、0 より大きければ塞がっている。−1（分からない）は塞がっていないとみなす（[-auto.md](DetailedDesign-auto.md) §3 `stand_blocked`）。2026-11-11 に足した） |
 
 腕が振れる範囲の大きさは測定機構の側の値（[DetailedDesign.md](DetailedDesign.md) §2）。
+
+### 5.1 偽の th（`fk_sim` の `fake_th`）
+
+試験でだけ使う。th の約束（th [DetailedDesign-measure.md](../../../../th-system/docs/plan/detailed/DetailedDesign-measure.md)）どおりに振る舞うための値。2026-11-11 に足した。
+
+| 名前 | 単位 | 既定 | 出どころ |
+| --- | --- | --- | --- |
+| `interface_version` | — | `"1"` | 先方（th の版）。試験で食い違いを作るときに変える |
+| `measure_link_timeout_ms` | ms | 1000 | 暫定（th の名前に揃えた。th の値は実装時に決まる（th §3.4 の (b)）。決まったら揃える） |
+| `status_period_ms` | ms | 100 | 先方（th の `/measure/status` は 10 Hz。th §2） |
 
 ## 6. コンテナ・ポート
 
@@ -148,4 +164,26 @@ th 側の名前（`/measure/*`・`/map`・`/ui/active_screen`・`/safety/estop_u
 | `fk_rosbridge_port` | 9091 | 2026-11-05 ユーザー承認（th の 9090 と分ける。WP-AUTO-01 で th が使うポートと重ならないことを確かめる） |
 | `fk_web_port` | 8091 | 2026-11-05 ユーザー承認（同上） |
 | ワークスペース | リポジトリの `fk_ws/`（`fk_ws/src/<パッケージ>`） | 2026-11-05 ユーザー承認（th の `th_ws/` に揃えた） |
-| th の型と UDP プロファイル | `../th-system` の `th_ws/src/th_system_msgs` と `th_ws/scripts/vibe_measure/fastdds_udp.xml` を読み取り専用でコンテナに入れる（写さない） | th DetailedDesign-measure.md §1 |
+| th の型と UDP プロファイル | `../th-system` の `th_ws/src/th_system_msgs` と `th_ws/scripts/vibe_measure/fastdds_udp.xml` を、**`fk_ws/th_ref` に書いたコミットから**取り出して使う（§7。写してコミットしない。th の作業ツリーの今のブランチに頼らない。2026-11-11） | th DetailedDesign-measure.md §1 |
+| `ROS_DOMAIN_ID`（試験） | 78 | 暫定（2026-11-11。実機の 10 と、th の試験が使う 77 と分ける。th `CLAUDE.md` 2026-09-23） |
+
+## 7. ファイル・ディレクトリ
+
+**th-system の `th_ws/` の作りに揃える**（2026-11-11）。パスはリポジトリ直下から。
+
+| パス | 中身 | git |
+| --- | --- | --- |
+| `fk_ws/Dockerfile` | `ros:humble-ros-base` が元。th の `th_ws/Dockerfile` に揃え、要るものだけ入れる | 入れる |
+| `fk_ws/docker-compose.yml` | サービス・コンテナ `fk_robot`（`network_mode: host`・`ROS_DOMAIN_ID=10`・FastDDS は UDP だけ） | 入れる |
+| `fk_ws/th_ref` | 取り込む th のコミット（全桁 1 行。いまは th `feat/era3-measure` の `a33dd9a`） | 入れる |
+| `fk_ws/scripts/import_th.sh` | ホストで回す。`fk_ws/th_ref` のコミットから th の型と UDP プロファイルを `git archive` で取り出す（th の場所の既定は `../th-system`） | 入れる |
+| `fk_ws/src/th_system_msgs/` | 取り込み先（th の型） | **入れない**（`.gitignore`） |
+| `fk_ws/th_import/fastdds_udp.xml` | 取り込み先（UDP プロファイル） | **入れない**（`.gitignore`） |
+| `fk_ws/scripts/test.sh` | コンテナの中で、取り込みが `th_ref` と合っているかの確認・`colcon build`・試験 | 入れる |
+| `fk_ws/src/fk_msgs/` | §4.1 の型 | 入れる |
+| `fk_ws/src/fk_auto/fk_auto/core.py` | 純関数と `Snapshot`（WP-AUTO-02） | 入れる |
+| `fk_ws/src/fk_auto/fk_auto/auto_runner.py` | ノード `auto_runner` | 入れる |
+| `fk_ws/src/fk_auto/test/` | 試験。`conftest.py` がホストの pytest から `fk_auto` を import できるようにする | 入れる |
+| `fk_ws/src/fk_sim/fk_sim/fake_th.py` | ノード `fake_th` | 入れる |
+| `fk_ws/src/fk_bringup/config/params.yaml` | §5 の値（ノード名 `auto_runner` の下） | 入れる |
+| `fk_ws/src/fk_bringup/launch/fk.launch.py` | 実機用の起動（`auto_runner`） | 入れる |
