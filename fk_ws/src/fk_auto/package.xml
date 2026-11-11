@@ -10,6 +10,8 @@
   <depend>std_msgs</depend>
   <depend>fk_msgs</depend>
   <depend>th_system_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>rcl_interfaces</depend>
 
   <test_depend>python3-pytest</test_depend>
 

@@ -1,8 +1,37 @@
-# 正本は docs/plan/detailed/DetailedDesign-names.md §5
+# 正本は docs/plan/detailed/DetailedDesign-names.md §5。
+# auto_runner は型を問わず受ける（dynamic_typing）が、小数の値は小数で書く。
 auto_runner:
   ros__parameters:
     heartbeat_period_ms: 200
     runner_stall_ms: 500
     runner_period_ms: 100
     state_period_ms: 500
-    th_status_stale_ms: 500
+    th_status_stale_ms: 500.0
+    lift_state_stale_ms: 500.0
+    lift_cmd_period_ms: 100
+    lift_host: "hve-lift.local"
+    lift_drift_stop_mm: 50.0
+    no_lower_move_max_m: 0.0
+    lift_lower_timeout_s: 60.0
+    stand_distance_min_m: 0.389
+    stand_margin_m: 0.0
+    arrive_tol_m: 0.12
+    arrive_tol_rad: 0.12
+    regoal_max: 1
+    reroute_max: 3
+    blocked_wait_s: 5.0
+    ss_result_timeout_s: 300.0
+    ss_status_stale_ms: 1000.0
+    ss_pos_std_max_m: 0.15
+    ss_yaw_std_max_deg: 5.0
+    ss_cleanup_timeout_s: 60.0
+    ss_max_distance_m: 0.0
+    recheck_span_rad: 3.1416
+    recheck_match_max_m: 0.3
+    ss_retry_max: 2
+    ss_pose_tol_m: 0.02
+    ss_pose_tol_rad: 0.02
+    row_yaw_tol_rad: 0.17
+    row_gap_max_m: 0.3
+    footprint_half_m: 0.275
+    map_occupied_min: 1
