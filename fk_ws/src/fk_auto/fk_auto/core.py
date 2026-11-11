@@ -53,6 +53,16 @@ class Params:
     footprint_half_m: float = 0.275
     map_occupied_min: int = 1
     th_interface_version: str = TH_INTERFACE_VERSION
+    # 状態機械（runner.py）が使う値（names.md §5。WP-AUTO-03 で足した）
+    reroute_max: int = 3
+    blocked_wait_s: float = 5
+    regoal_max: int = 1
+    lift_lower_timeout_s: float = 60
+    ss_result_timeout_s: float = 300
+    ss_cleanup_timeout_s: float = 60
+    ss_max_distance_m: float = 0
+    recheck_span_rad: float = 3.1416
+    ss_retry_max: int = 2
 
 
 # ---------------------------------------------------------------------------
@@ -83,6 +93,7 @@ class SsRect:
     lugs: int = 0
     front_known: bool = False
     front_yaw_rad: float = 0.0
+    top_height_m: float = 0.0   # 天面の高さ。to_map は触らない（Runner が順序で対応づける。WP-AUTO-03）
 
 
 @dataclass(frozen=True)
@@ -166,6 +177,9 @@ class LiftStatus:
     # 測定機構が付いているか。False のときだけ腕の条件を外す。None（分からない）は付いているとみなす
     mechanism_attached: Optional[bool] = None
     arm_link_ok: Optional[bool] = None       # 腕の制御器と通信できるか（None は読めない = できない扱い）
+    # 以下は WP-AUTO-03 で足した（None は読めない）
+    origin_ok: Optional[bool] = None         # 昇降機の原点が取れているか（PREPARE）
+    operator_is_human: Optional[bool] = None  # いま昇降機を操作している元が人か（割り込み）
 
 
 @dataclass(frozen=True)
