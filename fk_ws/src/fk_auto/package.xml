@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>fk_auto</name>
+  <version>0.1.0</version>
+  <description>fk-system 自律測定の移動（機能側ノード auto_runner）</description>
+  <maintainer email="dev@example.com">FK Team</maintainer>
+  <license>MIT</license>
+
+  <depend>rclpy</depend>
+  <depend>std_msgs</depend>
+  <depend>fk_msgs</depend>
+  <depend>th_system_msgs</depend>
+
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
