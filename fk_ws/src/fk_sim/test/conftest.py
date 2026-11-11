@@ -63,7 +63,8 @@ class Harness:
                  fake_params=None, runner_params=None):
         self.panels = list(panels)
         self.errors = []
-        self.break_step = False
+        self.break_step = False        # pre_step の段階で例外を出す
+        self.break_runner_step = False  # Runner.step 自身が例外を出す
         self.th_commands = []
         self.lift = self.ss = None
         pre = []
@@ -77,6 +78,13 @@ class Harness:
                                  parameter_overrides=_overrides(dict(RUNNER_PARAMS,
                                                                      **(runner_params or {}))))
         fp = dict(FAKE_PARAMS, interface_version=fake_version, **(fake_params or {}))
+        real_step = self.runner.runner.step
+
+        def step(now_ms):
+            if self.break_runner_step:
+                raise RuntimeError('Runner.step が例外を出す（試験）')
+            return real_step(now_ms)
+        self.runner.runner.step = step
         self.fake = FakeThNode(parameter_overrides=_overrides(fp))
         real_submit = self.fake.model.submit
 

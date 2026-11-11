@@ -68,3 +68,14 @@ def test_c2_step_that_cannot_finish_stops_heartbeat(harness):
     assert not h.runner._hb_timer.is_canceled()
     h.break_step = False
     assert wait_until(h.fake.link_ok, MARGIN_S + LINK_TIMEOUT_S)
+
+
+def test_c3_runner_step_raising_stops_heartbeat(harness):
+    """(c'') Runner.step 自身が例外を出しても、握りつぶして「回った」ことにしない（生存確認が止まる）。"""
+    h = harness
+    assert wait_until(h.fake.link_ok, MARGIN_S + LINK_TIMEOUT_S)
+    h.break_runner_step = True
+    assert wait_until(lambda: not h.fake.link_ok(), STALL_S + LINK_TIMEOUT_S + MARGIN_S)
+    assert h.errors
+    h.break_runner_step = False
+    assert wait_until(h.fake.link_ok, MARGIN_S + LINK_TIMEOUT_S)
