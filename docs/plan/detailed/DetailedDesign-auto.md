@@ -85,6 +85,7 @@
 | 本システムが昇降機を動かしている間に、人が昇降機を操作した（昇降部の「操作している元」が人に変わった）。**ss が「人の操作で中断」を理由に後片付けの完了を返したときも同じ** | 自分の昇降の命令を送るのをやめ、押し直さない。`PAUSED` と同じく人の「走行」を待つ（人が優先。[Spec-arm.md](../spec/Spec-arm.md) の「最後の操作が勝つ」） | 人の「走行」→ 今の段をやり直す |
 | 全体を止める場面（[Spec-auto.md](../spec/Spec-auto.md) §6 の下段・§7） | `HALTED`。th・昇降機・ss に新しい指示を出さない。理由を画面に出す | 人が抜ける |
 | 人の「中止」（`auto.abort`） | 走っていれば `meas.abort` で止めて `SELECT`。`AT_PANEL` なら測定機構の口に中止を渡し、腕の格納を待ってから `SELECT` | — |
+| **th が動く指示を拒否した**（**暫定。2026-11-11 実装管理担当の案。ユーザーの確認待ち**。仕様・設計に無かった） | **自分からは出し直さない。**理由は `AutoState.th_reject_reason` に出す。`localization_lost`・`map_mismatch` → `REENTRY`（地図か配置図が古い）。`meas.goal` のほかの理由（`corner_obstacle` など）→ `SELECT` に戻る（th は `WAIT` のまま。測り終えた盤の結果は残す）。`meas.start` → `PAUSED` のまま。`meas.reroute` → 再計算 1 回の失敗として数える（`reroute_max` を超えたら `meas.abort` → 飛ばす `no_path`）。止める側（`meas.stop`・`meas.abort`・`meas.finish`）が拒否されたら、th の状態で止まっていると分かれば待たずに進む（結果は来ない） | 人が選び直して「開始」／もう一度「走行」 |
 | 人の「終了」（`auto.finish`） | 腕が格納位置になければ、画面で確認が済んだ印（`arm_confirmed`）が要る。**腕の状態が読めないときも、格納位置にないのと同じに確認を求める**。`meas.finish` → `IDLE` | — |
 
 ### 2.3 測定機構なしの道

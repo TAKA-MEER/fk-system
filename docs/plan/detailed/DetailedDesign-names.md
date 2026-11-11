@@ -53,6 +53,10 @@
 | `Snapshot` | 状態機械が core に渡す「いまの様子」（th・昇降機・ss・測定機構の口から集めたもの） |
 | `ThPort`・`LiftPort`・`SsPort`・`ArmPort` | 口（[-auto.md](DetailedDesign-auto.md) §1.3） |
 | `FakeTh`・`FakeLift`・`FakeSs`・`NoMechanism` | 偽の口（ROS 2 なしの試験用）。`NoMechanism` は最初の版の測定機構の口（測定機構なし） |
+| `Runner` | 状態機械（`fk_auto.runner`。ROS なし）。**th への指示と昇降機への命令は `Runner` の中の 1 つの送り口だけが出し、送るたびに `gate` を通す**（昇降機を下げ続ける間も 1 回ごと。2026-11-11） |
+| `ThModel` | th の振る舞いの ROS なしのモデル（th Spec-modes.md `SM-3.1.2-120`〜`-142`・th DetailedDesign-measure.md §3.1・§3.2）。**`FakeTh` と `FakeThNode` が同じものを使う**（偽物どうしで th の振る舞いがずれないように。2026-11-11） |
+| `FakeThNode` | ノード `fake_th` のクラス（`fk_sim.fake_th`）。WP-AUTO-01 では `FakeTh` と名付けていたが、偽の口とぶつかるので改める（2026-11-11） |
+| `RosThPort` | th の口の ROS 2 の実装（`fk_auto.auto_runner` に置く。rclpy を使うので `ports.py` に置かない。2026-11-11） |
 | `to_map`・`front_edge`・`is_confident`・`group_rows`・`order_panels`・`stand_pose`・`stand_blocked`・`needs_regoal`・`ss_result_valid`・`can_run`・`classify_skip`・`classify_halt`・`gate`・`drive_watch` | 純関数（[-auto.md](DetailedDesign-auto.md) §3・§4） |
 | `CMD_LIFT_LOWER`（`"lift.lower"`）・`CMD_SS_REQUEST`（`"ss.request"`） | `gate` に渡す「昇降機を下げる」「ss への依頼」（`fk_auto.core` の定数。外へは出さない。2026-11-11 WP-AUTO-02） |
 | `TH_INTERFACE_VERSION` | 取り込んだ th の型の版（`"1"`。th [DetailedDesign-measure.md](../../../../th-system/docs/plan/detailed/DetailedDesign-measure.md) §1.2）。生存確認に載せ、`/measure/status` の版と比べる。**`fk_ws/th_ref`（§7）を進めるときに一緒に見直す**（2026-11-11） |
@@ -77,7 +81,7 @@ th 側の名前（`/measure/*`・`/map`・`/ui/active_screen`・`/safety/estop_u
 | 型 | 中身 |
 | --- | --- |
 | `AutoCommand.srv` | `string command` / `string[] panel_ids`（`auto.start` だけ）/ `bool arm_confirmed`（`auto.finish` だけ。画面で腕の確認が済んだ）→ `bool accepted` / `string reject_reason` |
-| `AutoState.msg` | `std_msgs/Header header` / `string phase` / `string panel_id`（いま向かっている・作業中の盤）/ `string[] queue`（残りの順）/ `string halt_reason` / `string gate_reason`（関門で止めている理由。無ければ空）/ `bool lift_at_bottom` / `bool lift_readable` / `bool arm_stowed` / `bool mechanism_attached` / `bool reentry_required` / `string th_mode` / `string th_state` |
+| `AutoState.msg` | `std_msgs/Header header` / `string phase` / `string panel_id`（いま向かっている・作業中の盤）/ `string[] queue`（残りの順）/ `string halt_reason` / `string gate_reason`（関門で止めている理由。無ければ空）/ `bool lift_at_bottom` / `bool lift_readable` / `bool arm_stowed` / `bool mechanism_attached` / `bool reentry_required` / `string th_mode` / `string th_state` / `string th_reject_reason`（th が最後に指示を拒否した理由。th の理由キーのまま。無ければ空。2026-11-11 に足した） |
 | `Panel.msg` | `string panel_id` / `float64 x` / `float64 y`（天面の中心。map フレーム [m]）/ `float64 front_yaw`（正面の向き。盤から外向き [rad]）/ `float32 width_m` / `float32 depth_m` / `float32 top_height_m` / `float32 pos_std_m` / `float32 yaw_std_deg` / `int32 lugs`（ss の確からしさ。使った吊り金具の数。ss の名前に揃えた）/ `bool confident`（しきい値を満たすか）/ `bool ss_front_known`（ss が「正面が分かっている」と返した）/ `float64 ss_front_yaw`（そのときの ss の正面の向き。参考）/ `bool front_doubt`（ss の正面と、機体に向いていた辺が違う）/ `string row_id` |
 | `Layout.msg` | `std_msgs/Header header` / `string map_instance_id` / `Panel[] panels` / `float32[] unseen_from_rad` / `float32[] unseen_to_rad`（見ていない方向。map フレーム。ss が返す「実際に見た方位角の範囲」の残り） |
 | `PanelResult.msg` | `string panel_id` / `string result`（`DONE` / `SKIPPED`）/ `string reason` |
@@ -111,6 +115,13 @@ th 側の名前（`/measure/*`・`/map`・`/ui/active_screen`・`/safety/estop_u
 | 関門と見張りの理由（`AutoState.gate_reason`。`AutoCommand` の `reject_reason` にも使う） | §4.2 の `lift_not_bottom`・`arm_not_stowed`・`ss_busy`・`state_unreadable`（th の様子・昇降機の高さ・腕の状態・ss の状態のどれかが読めない）・`reentry_required`・`version_mismatch` に加えて、**2026-11-11 に足した**: `th_not_waiting`（ss への依頼で th が `WAIT` でない）/ `arm_link_lost`（測定機構があるのに腕の制御器と通信できない。止める理由と同じキー）/ `not_listed`（関門の表に無い指示。[-auto.md](DetailedDesign-auto.md) §4.1）/ `lift_drift`（走っている間に昇降機が下端から `lift_drift_stop_mm` 以上離れた。見張り §4.2） |
 | 止める理由（`halt_reason`） | `arm_stuck`（腕が出たまま動けない）/ `lift_not_lowered`（昇降機を下げられない）/ `state_unreadable`（昇降機の高さか腕の状態が読めない）/ `ss_cleanup_timeout`（ss の後片付けの完了が来ない）/ `ss_link_lost`（ss と通信できない）/ `arm_link_lost`（腕が出ている間に腕の制御器と通信できない） |
 
+### 4.4 配置図の ID（2026-11-11）
+
+| 名前 | 形 |
+| --- | --- |
+| `panel_id` | `P` ＋ 3 桁の通し番号（`P001`）。**`auto_runner` が起きている間は使い回さない**（探し直し・入り直しで配置図を作り直しても、前の結果の盤と混ざらない）。盤前で認識し直して位置を直しても同じ盤は同じ ID |
+| `row_id` | `R` ＋ 通し番号（`R1`）。配置図を作るたびに振り直す |
+
 ## 5. パラメータ（`fk_bringup` の `params.yaml`。`auto_runner`）
 
 | 名前 | 単位 | 値 | 出どころ |
@@ -138,6 +149,8 @@ th 側の名前（`/measure/*`・`/map`・`/ui/active_screen`・`/safety/estop_u
 | `ss_pos_std_max_m` | m | 0.15 | 暫定（盤を「確か」とみなす位置の標準偏差の上限。ss の配置図向けの精度の目標 ±15 cm に揃えた） |
 | `ss_yaw_std_max_deg` | ° | 5 | 暫定（同じく向き。ss の目標 ±5° に揃えた） |
 | `ss_cleanup_timeout_s` | s | 60 | 暫定（仕様は「一定時間」。結果か取り消しのあと、後片付けの完了を待つ上限。超えたら `ss_cleanup_timeout`。依頼から数えると、本システムが待つのは最長で `ss_result_timeout_s` ＋ これ。**ss 自身の上限 `cleanup_timeout_s`（暫定 30 s。結果を返してから数える）より長くしておく**こと。ss は見直して 60 s に近づくときは先に知らせる） |
+| `ss_max_distance_m` | m | 0 | 先方（0 は ss の既定 5.0 m。ss DetailedDesign-locate.md §1）。全周・盤前とも。2026-11-11 に足した |
+| `recheck_span_rad` | rad | 3.1416 | 暫定（盤前で認識し直すときに ss へ渡す方向の幅 π。機体の前の半分で、開始は −π/2。盤前では盤は真正面にある。2026-11-11 に足した） |
 | `ss_retry_max` | 回 | 2 | 暫定（ss の結果が使えないとき依頼し直す上限） |
 | `ss_pose_tol_m` | m | 0.02 | 暫定（ss の依頼の間に機体が動いていないとみなす差） |
 | `ss_pose_tol_rad` | rad | 0.02 | 暫定（同上） |
@@ -157,6 +170,7 @@ th 側の名前（`/measure/*`・`/map`・`/ui/active_screen`・`/safety/estop_u
 | `interface_version` | — | `"1"` | 先方（th の版）。試験で食い違いを作るときに変える |
 | `measure_link_timeout_ms` | ms | 1000 | 暫定（th の名前に揃えた。th の値は実装時に決まる（th §3.4 の (b)）。決まったら揃える） |
 | `status_period_ms` | ms | 100 | 先方（th の `/measure/status` は 10 Hz。th §2） |
+| `nav_time_ms` | ms | 1000 | 暫定（目的地の指示を受けてから、走って向きを合わせ終えるまで。2026-11-11 に足した） |
 
 ## 6. コンテナ・ポート
 
@@ -184,9 +198,12 @@ th 側の名前（`/measure/*`・`/map`・`/ui/active_screen`・`/safety/estop_u
 | `fk_ws/scripts/test.sh` | コンテナの中で、取り込みが `th_ref` と合っているかの確認・`colcon build`・試験 | 入れる |
 | `fk_ws/src/fk_msgs/` | §4.1 の型 | 入れる |
 | `fk_ws/src/fk_auto/fk_auto/core.py` | 純関数と `Snapshot`（WP-AUTO-02） | 入れる |
-| `fk_ws/src/fk_auto/fk_auto/auto_runner.py` | ノード `auto_runner` | 入れる |
+| `fk_ws/src/fk_auto/fk_auto/auto_runner.py` | ノード `auto_runner`（と `RosThPort`） | 入れる |
+| `fk_ws/src/fk_auto/fk_auto/runner.py` | 状態機械 `Runner`（ROS なし。WP-AUTO-03） | 入れる |
+| `fk_ws/src/fk_auto/fk_auto/ports.py` | 口の抽象（`ThPort`・`LiftPort`・`SsPort`・`ArmPort`）と `NoMechanism`（ROS なし。WP-AUTO-03） | 入れる |
+| `fk_ws/src/fk_auto/fk_auto/fakes.py` | `ThModel`・`FakeTh`・`FakeLift`・`FakeSs`（ROS なし。`fake_th` ノードも `ThModel` を使う。WP-AUTO-03） | 入れる |
 | `fk_ws/src/fk_auto/test/` | 試験。`conftest.py` がホストの pytest から `fk_auto` を import できるようにする | 入れる |
-| `fk_ws/src/fk_sim/fk_sim/fake_th.py` | ノード `fake_th` | 入れる |
+| `fk_ws/src/fk_sim/fk_sim/fake_th.py` | ノード `fake_th`（クラス `FakeThNode`。振る舞いは `fk_auto.fakes.ThModel`） | 入れる |
 | `fk_ws/src/fk_sim/test/` | `fake_th` を相手に ROS 2 で通す結合試験（コンテナの中で回す） | 入れる |
 | `fk_ws/src/fk_bringup/config/params.yaml` | §5 の値（ノード名 `auto_runner` の下） | 入れる |
 | `fk_ws/src/fk_bringup/launch/fk.launch.py` | 実機用の起動（`auto_runner`） | 入れる |
