@@ -413,3 +413,78 @@ def stand_pose(panel: Panel, stand_distance_min_m: float, stand_margin_m: float)
     return Pose(panel.x + d * math.cos(panel.front_yaw),
                 panel.y + d * math.sin(panel.front_yaw),
                 wrap_angle(panel.front_yaw + math.pi))
+
+
+# ---------------------------------------------------------------------------
+# stand_blocked・needs_regoal・ss_result_valid
+# ---------------------------------------------------------------------------
+
+def stand_blocked(grid: Grid, stand: Pose, footprint_half_m: float,
+                  map_occupied_min: int) -> bool:
+    """立ち位置に機体が立てないか（True = 塞がっている）。
+
+    立ち位置に、立ち位置の向きに回した一辺 2 × footprint_half_m の正方形を置き、その中に
+    中心がある map_occupied_min 以上のマスが 1 つでもあれば塞がっている。
+    −1（分からない）と地図の外は塞がっていないとみなす（DetailedDesign-auto.md §3）。
+    """
+    h = footprint_half_m
+    eps = 1e-9
+    # 正方形の外接の軸平行な箱（地図の座標）
+    ext = h * (abs(math.cos(stand.yaw)) + abs(math.sin(stand.yaw)))
+    ext_y = h * (abs(math.sin(stand.yaw)) + abs(math.cos(stand.yaw)))
+    gc, gs = math.cos(grid.origin_yaw), math.sin(grid.origin_yaw)
+    # 地図の座標 → 格子の座標（原点基準・格子の軸）
+    corners = []
+    for sx in (-ext, ext):
+        for sy in (-ext_y, ext_y):
+            wx, wy = stand.x + sx - grid.origin_x, stand.y + sy - grid.origin_y
+            corners.append((gc * wx + gs * wy, -gs * wx + gc * wy))
+    res = grid.resolution
+    c0 = max(0, int(math.floor(min(c[0] for c in corners) / res)) - 1)
+    c1 = min(grid.width - 1, int(math.floor(max(c[0] for c in corners) / res)) + 1)
+    r0 = max(0, int(math.floor(min(c[1] for c in corners) / res)) - 1)
+    r1 = min(grid.height - 1, int(math.floor(max(c[1] for c in corners) / res)) + 1)
+    cy, sy_ = math.cos(stand.yaw), math.sin(stand.yaw)
+    for row in range(r0, r1 + 1):
+        for col in range(c0, c1 + 1):
+            v = grid.data[row * grid.width + col]
+            if v < 0 or v < map_occupied_min:
+                continue
+            lx, ly = (col + 0.5) * res, (row + 0.5) * res
+            wx = grid.origin_x + gc * lx - gs * ly
+            wy = grid.origin_y + gs * lx + gc * ly
+            dx, dy = wx - stand.x, wy - stand.y
+            ux, uy = cy * dx + sy_ * dy, -sy_ * dx + cy * dy
+            if abs(ux) <= h + eps and abs(uy) <= h + eps:
+                return True
+    return False
+
+
+def needs_regoal(new_stand: Pose, current: Pose, arrive_tol_m: float,
+                 arrive_tol_rad: float) -> bool:
+    """求め直した立ち位置が今の位置から許容差を超えてずれているか（目的地の出し直しが要るか）。"""
+    if math.hypot(new_stand.x - current.x, new_stand.y - current.y) > arrive_tol_m:
+        return True
+    return abs(angle_diff(new_stand.yaw, current.yaw)) > arrive_tol_rad
+
+
+def ss_result_valid(at_request: Optional[ThStatus], at_result: Optional[ThStatus],
+                    waited_throughout: bool, ss_pose_tol_m: float,
+                    ss_pose_tol_rad: float) -> bool:
+    """ss の結果を使ってよいか。
+
+    依頼した時点と結果の時点の th の様子が読めて、どちらも WAIT・自己位置が有効・地図の世代が
+    同じで、依頼のあいだ状態がずっと WAIT（waited_throughout。状態機械が見張る）、位置の差が
+    許容差以内なら使える。外れたら結果を捨てて依頼し直す。
+    """
+    if at_request is None or at_result is None or not waited_throughout:
+        return False
+    if at_request.state != "WAIT" or at_result.state != "WAIT":
+        return False
+    if not (at_request.pose_valid and at_result.pose_valid):
+        return False
+    if at_request.map_instance_id != at_result.map_instance_id:
+        return False
+    if math.hypot(at_result.x - at_request.x, at_result.y - at_request.y) > ss_pose_tol_m:
+        return False
+    return abs(angle_diff(at_result.yaw, at_request.yaw)) <= ss_pose_tol_rad
