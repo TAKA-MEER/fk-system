@@ -63,6 +63,7 @@ class Params:
     ss_max_distance_m: float = 0
     recheck_span_rad: float = 3.1416
     ss_retry_max: int = 2
+    recheck_match_max_m: float = 0.3
 
 
 # ---------------------------------------------------------------------------

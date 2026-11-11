@@ -79,6 +79,7 @@ def test_survey_uses_partial_result_and_shows_unseen_directions():
     lay = w.runner.get_layout()
     assert len(lay.panels) == 1
     assert len(lay.unseen_from_rad) == 1 and len(lay.unseen_to_rad) == 1   # 見ていない方向が残る
+    assert lay.survey_reason == "timeout"                                  # ss の終わり方のまま
 
 
 def test_survey_rechecks_when_result_is_unusable_and_gives_up_after_retries():
@@ -93,7 +94,7 @@ def test_survey_rechecks_when_result_is_unusable_and_gives_up_after_retries():
     w.to_select()
     assert len(w.ss.requests) == 1 + P.ss_retry_max
     assert w.runner.get_layout().panels == []
-    assert w.runner.last_survey_failure == "SS_RESULT_UNUSABLE"
+    assert w.runner.get_layout().survey_reason == "ss_failed"
 
 
 def test_survey_retry_then_success_uses_second_result():
@@ -118,7 +119,7 @@ def test_survey_no_result_cancels_waits_cleanup_and_gives_empty_layout():
     w.begin()
     w.until_phase("SELECT")
     assert [c[0] for c in w.ss.cancels] == ["s1"]
-    assert w.runner.get_layout().panels == [] and w.runner.last_survey_failure == "SS_TIMEOUT"
+    assert w.runner.get_layout().panels == [] and w.runner.get_layout().survey_reason == "ss_failed"
     assert w.ss.status().state == "IDLE"        # 後片付けの完了まで待ってから SELECT に来た
 
 
@@ -127,6 +128,7 @@ def test_survey_empty_result_gives_empty_layout_and_rescan_finds_panels():
     w.hide = {0}
     w.to_select()
     assert w.runner.get_layout().panels == []
+    assert w.runner.get_layout().survey_reason == "no_lugs"
     w.hide = set()
     assert w.cmd("auto.rescan").accepted
     assert w.phase == "SURVEY"
@@ -278,12 +280,12 @@ def test_recheck_requests_front_half_from_stand_and_goes_to_at_panel():
 def test_recheck_updates_layout_and_regoals_once_when_stand_moves_beyond_tolerance():
     w = World([WPanel(3.0, 0.0)])
     w.to_select()
-    w.recheck_shift = [0.5, 0.5]            # 認識し直すと盤が 0.5 m 奥にあった（出し直した先では合う）
+    w.recheck_shift = [0.2, 0.2]            # 認識し直すと盤が 0.2 m 奥にあった（出し直した先では合う）
     w.start()
     w.until_phase("FINISH")
     goals = [c for c in w.th.sent if c.command == "meas.goal"]
-    assert len(goals) == 2 and goals[1].x == pytest.approx(STAND_X + 0.5)
-    assert w.runner.get_layout().panels[0].x == pytest.approx(3.5)
+    assert len(goals) == 2 and goals[1].x == pytest.approx(STAND_X + 0.2)
+    assert w.runner.get_layout().panels[0].x == pytest.approx(3.2)
     assert w.ids() == ["P001"]              # 位置を直しても同じ盤は同じ ID
     assert w.results() == [("P001", "SKIPPED", "no_mechanism")]
 
@@ -291,7 +293,7 @@ def test_recheck_updates_layout_and_regoals_once_when_stand_moves_beyond_toleran
 def test_recheck_stand_mismatch_twice_skips_stand_mismatch():
     w = World([WPanel(3.0, 0.0)])
     w.to_select()
-    w.recheck_shift = [0.5, 1.0]            # 出し直した先でも、盤がさらに奥に見えて、まだ許容差を超える
+    w.recheck_shift = [0.2, 0.35]           # 出し直した先でも、盤がさらに奥に見えて、まだ許容差を超える
     w.start()
     w.until_phase("FINISH")
     assert w.results() == [("P001", "SKIPPED", "stand_mismatch")]
@@ -306,6 +308,27 @@ def test_recheck_top_not_found_when_nothing_returned():
     w.hide = {0}
     w.until_phase("FINISH")
     assert w.results() == [("P001", "SKIPPED", "top_not_found")]
+
+
+def test_recheck_does_not_mistake_a_neighbor_panel_for_the_target():
+    """目当ての盤が見えず、recheck_match_max_m より遠くに別の盤だけ見える → top_not_found。"""
+    w = World([WPanel(3.0, 0.0), WPanel(3.0, 4.0)])
+    w.to_select()
+    w.start(["P001"])
+    w.until_phase("RECHECK")
+    w.hide = {0}
+    w.until_phase("FINISH")
+    assert w.results() == [("P001", "SKIPPED", "top_not_found")]
+    assert [c.command for c in w.th.sent].count("meas.goal") == 1    # 隣の盤の位置へは行かない
+
+
+def test_recheck_picks_nearest_rect_within_match_limit():
+    w = World([WPanel(3.0, 0.0)])
+    w.to_select()
+    w.recheck_shift = [0.25, 0.25]          # 0.3 m 以内のずれ: 同じ盤
+    w.start()
+    w.until_phase("FINISH")
+    assert w.runner.get_layout().panels[0].x == pytest.approx(3.25)
 
 
 def test_recheck_top_not_found_when_not_confident():

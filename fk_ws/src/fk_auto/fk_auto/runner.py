@@ -81,6 +81,7 @@ class LayoutView:
     panels: List[PanelView] = field(default_factory=list)
     unseen_from_rad: List[float] = field(default_factory=list)
     unseen_to_rad: List[float] = field(default_factory=list)
+    survey_reason: str = ""      # 配置図が空・途中で終わった理由（completed は空。失敗は ss_failed）
 
 
 @dataclass(frozen=True)
@@ -166,7 +167,7 @@ class Runner:
         self._halt_reason = ""
         self._gate_reason = ""
         self._th_reject_reason = ""
-        self.last_survey_failure = ""               # 空の配置図にした理由（画面に出す欄は未定）
+        self._survey_reason = ""                    # Layout.survey_reason
 
         self._results: List[PanelResultView] = []   # 測り終えた盤の結果。入り直しでも消さない
         self._layout_map_id = ""
@@ -208,7 +209,8 @@ class Runner:
         return LayoutView(
             now_ms=self._now, map_instance_id=self._layout_map_id,
             panels=list(self._layout_panels),
-            unseen_from_rad=[a for a, _ in self._unseen], unseen_to_rad=[b for _, b in self._unseen])
+            unseen_from_rad=[a for a, _ in self._unseen], unseen_to_rad=[b for _, b in self._unseen],
+            survey_reason=self._survey_reason)
 
     def get_results(self) -> List[PanelResultView]:
         return list(self._results)
@@ -566,6 +568,7 @@ class Runner:
         self._cur, self._queue = "", []
         self._layout_map_id, self._layout_panels, self._core_panels = "", [], {}
         self._rows, self._unseen, self._regoal = [], [], {}
+        self._survey_reason = ""
         self._abort = None
         self._halt_reason = ""
         self._th_reject_reason = ""
@@ -735,10 +738,11 @@ class Runner:
         if done is None or self._phase != "SURVEY":
             return
         if done.failure is not None:          # 結果が来ない・使えない: 空の配置図（もう一度探せる）
-            self.last_survey_failure = done.failure.name
+            self._survey_reason = "ss_failed"
             self._set_layout(snap, None, None)
         else:
-            self.last_survey_failure = ""
+            rs = done.result.reason
+            self._survey_reason = "" if rs == "completed" else rs
             self._set_layout(snap, done.result, done.th_req)
         self._enter("SELECT")
 
@@ -838,9 +842,14 @@ class Runner:
             self._skip(SkipEvent.TOP_NOT_FOUND)
             return
         old = self._core_panels[self._cur]
-        # 同じ盤の選び方（設計書に規則が無いので決めた）: 前の中心に最も近い矩形
-        i = min(range(len(mp.panels)), key=lambda k: math.hypot(mp.panels[k].x - old.x,
-                                                                mp.panels[k].y - old.y))
+        # 同じ盤の選び方: 配置図の中心から recheck_match_max_m 以内で最も近い矩形だけ（隣の盤を取り違えない）
+        near = [k for k in range(len(mp.panels))
+                if math.hypot(mp.panels[k].x - old.x, mp.panels[k].y - old.y)
+                <= self.p.recheck_match_max_m]
+        if not near:
+            self._skip(SkipEvent.TOP_NOT_FOUND)
+            return
+        i = min(near, key=lambda k: math.hypot(mp.panels[k].x - old.x, mp.panels[k].y - old.y))
         rect, ss_rect = mp.panels[i], res.panels[i]
         if not core.is_confident(rect.pos_std_m, rect.yaw_std_deg, self.p.ss_pos_std_max_m,
                                  self.p.ss_yaw_std_max_deg):

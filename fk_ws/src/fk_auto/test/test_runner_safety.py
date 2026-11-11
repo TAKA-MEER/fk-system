@@ -33,7 +33,7 @@ def sc_normal(w):
 
 def sc_two_rows_and_recheck_regoal(w):
     w.to_select()
-    w.recheck_shift = [0.5, 0.5]
+    w.recheck_shift = [0.2, 0.2]
     w.start()
     w.until_phase("FINISH")
 
