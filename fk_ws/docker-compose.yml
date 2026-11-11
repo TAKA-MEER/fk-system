@@ -1,0 +1,19 @@
+services:
+  fk_robot:
+    build:
+      context: .
+      network: host
+    container_name: fk_robot
+    network_mode: host
+    environment:
+      # 実機は 10。試験は -e ROS_DOMAIN_ID=78 で分ける（scripts/test.sh は 10 だと結合試験を回さない）
+      - ROS_DOMAIN_ID=10
+      # th_robot と /dev/shm を共有できないので UDP だけにする（th の fastdds_udp.xml。import_th.sh が取り込む）
+      - FASTRTPS_DEFAULT_PROFILES_FILE=/root/fk_ws/th_import/fastdds_udp.xml
+    volumes:
+      - ./src:/root/fk_ws/src
+      - ./scripts:/root/fk_ws/scripts
+      - ./th_import:/root/fk_ws/th_import
+      - ./th_ref:/root/fk_ws/th_ref
+    stdin_open: true
+    tty: true
