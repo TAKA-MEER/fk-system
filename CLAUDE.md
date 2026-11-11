@@ -77,6 +77,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   （手順・落とし穴は ImplementationPlan §2.1）。体数は固定しない。
   **まず codex に投げ、利用枠の上限が来たら opencode に切り替える**（th-system 2026-10-26 ユーザー決定に揃えた）。
   codex は無料プランの 30 日枠で、使い切ると約 1 か月戻らない（**th-system・hve-system・ss-system と枠を共有する**）。codex は `CLAUDE.md` ではなく `AGENTS.md` を読む（中身は「CLAUDE.md を読め」だけ）。
+  **2026-11-11 ユーザー: codex・opencode とも枠切れなので、Sonnet のサブエージェント（`Agent` の `model: sonnet`）で実装する**（worktree は自分で切って渡す。ImplementationPlan §2.1）。
   **窓口は herdr と orca の 2 つ。いま開いている方を環境変数で見分けて使う**:
   `TERM_PROGRAM=Orca`／`ORCA_TERMINAL_HANDLE` があれば orca（`orca worktree create --setup skip --agent codex`。枠切れなら `--agent opencode`）、
   `HERDR_PANE_ID`／`HERDR_ENV` があれば herdr（`ImplementAgent` タブ・`herdr pane split`）。
@@ -105,12 +106,30 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - 作業中に判明したこのプロジェクト固有の環境の癖・落とし穴（コマンドの意外な挙動、ツールの制約など）は、ユーザーに確認せず「環境の癖」セクションに追記してよい。
 - **CLAUDE.md を更新するたびに、ファイル全体を読み直し、陳腐化した記述・重複・冗長な説明がないか見直すこと。** コンテキストを圧迫しないよう、価値の下がった記述は削除するか簡潔にまとめる。肥大化を優先して情報を積み増すだけにしない。
-- 「ビルドとテスト」「アーキテクチャ」の節は無い。**使う道具が決まり、最初の作業パケットで実物を入れてから足す。**
+- 「アーキテクチャ」の節は無い（`docs/architecture.md` を作るときに考える）。
+
+## ビルドとテスト
+
+2026-11-11（WP-AUTO-01・02）から。名前と置き場は [DetailedDesign-names.md](docs/plan/detailed/DetailedDesign-names.md) §6・§7。
+
+```bash
+# th の型と UDP プロファイルを fk_ws/th_ref のコミットから取り出す（ホストで。th_ref を変えたら回し直す）
+bash fk_ws/scripts/import_th.sh
+
+# コンテナの中で colcon build ＋ 全試験（fk_ws/ から。ROS_DOMAIN_ID=78。10 だと test.sh が止める）
+cd fk_ws && docker compose build && docker compose run --rm -e ROS_DOMAIN_ID=78 fk_robot bash scripts/test.sh
+
+# 純関数だけならホストで（数秒）
+python3 -B -m pytest -p no:cacheprovider -p no:anyio fk_ws/src/fk_auto/test
+```
+
+- `docker compose run --rm` は毎回 `colcon build` からやり直す（`build`・`install` はコンテナの中。約 50 秒）。初回の `docker compose build` は約 5 分
+- 結合試験（`fk_ws/src/fk_sim/test/`）は `auto_runner` と `fake_th` を 1 つの pytest の中で起こして ROS 2 で通す。**本物の th とは th の 8-g の受け手が入ってから**
 
 ## 環境の癖・注意点
 
 th-system・hve-system で踏んだもののうち、同じ道具（herdr／orca ＋ codex／opencode）を使う限りここでも踏むものだけを移した。
-道具（言語・ファーム・ROS 等）が決まったら、その道具の癖を両リポジトリの `CLAUDE.md` から拾って足す。
+ROS 2・Docker の癖は 2026-11-11 に th-system から拾った（下）。アームの制御器のファームが決まったら、その道具の癖を両リポジトリの `CLAUDE.md` から拾って足す。
 
 - **opencode は「完了」を報告してもコミットしていないことがある**（th-system 2026-09-20）。**完了報告を受けたら、まず `git log main..HEAD` と `git status` を見る。**
 - **opencode に送る文に `!` を入れない。**`!` を打った時点で入力欄がシェルモードに切り替わり、依頼文がそのままコマンドとして実行される（`!=` も同じ。th-system 2026-10-07）。「でない」と言葉で書く。**`opencode --continue` は worktree ごとではなく全体で最後のセッションを開く**ので、止めたエージェントを戻すときは `opencode session list` で ID を見て `opencode --session <ID>` にする。
@@ -123,7 +142,13 @@ th-system・hve-system で踏んだもののうち、同じ道具（herdr／orca
 - **opencode の質問画面（選択肢つきの確認）は、ペインが低いと入力欄が画面外に出て、`herdr agent prompt` の文字が入らない**（hve-system 2026-09-28）。`herdr pane zoom <pane> --on` で広げ、`herdr pane read --source visible` で入力欄を確かめてから `herdr pane send-text` → `herdr pane send-keys <pane> Enter` で答える。終わったら `--off` で戻す。
 - **既に opencode が動いているペインに `herdr agent start` を打たない。**`start` はシェルプロンプト待ちを期待するため、動作中のセッションに文字列を打ち込んで壊す。`herdr agent rename` だけで登録する。
 - **別セッションへの `SendMessage` は、相手の許可モードがこちらと違うと相手側で保留になり、相手のユーザーが承認するまで届かない**（2026-11-01。orca で起動した th・hve は bypass だった）。保留の通知が来たら再送せず、ユーザーに相手のターミナルでの承認を頼む（ImplementationPlan §2.4）。
+- **以下は th-system `CLAUDE.md` から、同じ道具（ROS 2 Humble・Docker compose・rclpy）なら踏むものを拾った**（2026-11-11）。
+  - **`docker-compose.yml` は `fk_ws/` にある。**リポジトリ直下から `docker compose` を打つと `no configuration file provided` で落ちる。
+  - **`set -u` のまま `source /opt/ros/humble/setup.bash` すると `AMENT_TRACE_SETUP_FILES: unbound variable` で落ちる**（`set +u` で囲む。`test.sh` はそうしてある）。
+  - **`th_robot` コンテナはユーザーが実機作業中のことがある。**触らない。試験は本システムのコンテナで、ドメインを分けて回す。
+  - **rclpy の `declare_parameter` は既定値の型で決まり、params ファイルの整数と小数を変換しない**（既定値 `[]` は `BYTE_ARRAY` になる）。params.yaml の値の型をノードの宣言に揃える。
+  - `ros2 node list` はデーモンのキャッシュで古いことがある（`--no-daemon` でも取りこぼす）。一覧に出ないだけで死んだと判断しない。`pkill -TERM -f "ros2 launch ..."` は launch の親しか殺さず、子ノードが残る。ノードを `kill -9` で落とし続けると DDS の発見が壊れる。
 - **ホストの pytest は、`~/.local` に入った anyio のプラグインが apt の古い pytest と合わず、起動の時点で `No module named '_pytest.scope'` で落ちる**（2026-11-11）。ホストで回すときは `python3 -B -m pytest -p no:cacheprovider -p no:anyio` にする。
 - **`pkill -f <パターン>` は自分のシェルを殺すことがある**（パターンが自分のコマンドラインにマッチする。docker の中でもホストでも）。PID 指定で止める。
 - **今の昇降部のファームに `ceiling_sensor: false` で繋いで上昇させると、天井を見ずに上がる**（hve-system 2026-11-05。効くのは上端・下端・連続駆動の上限だけ）。hve の複数モジュール対応のパケットが入ったと知らせが来るまで、**本システムから昇降部へ繋いで試すときは下降と止めるだけにする。**
-- **th-system と同じ PC の別コンテナから th のトピックを購読すると、一覧には出るのに 0 件しか届かない**（th-system 2026-10-26。th 側の IPC が private で、FastDDS が共有メモリで送るため）。受ける側を UDP だけにする（th `th_ws/scripts/vibe_measure/fastdds_udp.xml` を `FASTRTPS_DEFAULT_PROFILES_FILE` で渡す）。**th の実機が動いている間に試験を回すと、同じ `ROS_DOMAIN_ID` で混線する**（th-system 2026-09-23）。試験はドメインを分ける。ROS2・Docker のほかの癖は、最初の作業パケットで th-system `CLAUDE.md` から拾う。
+- **th-system と同じ PC の別コンテナから th のトピックを購読すると、一覧には出るのに 0 件しか届かない**（th-system 2026-10-26。th 側の IPC が private で、FastDDS が共有メモリで送るため）。受ける側を UDP だけにする（th `th_ws/scripts/vibe_measure/fastdds_udp.xml` を `FASTRTPS_DEFAULT_PROFILES_FILE` で渡す）。**th の実機が動いている間に試験を回すと、同じ `ROS_DOMAIN_ID` で混線する**（th-system 2026-09-23）。試験はドメインを分ける（本システムは 78）。
