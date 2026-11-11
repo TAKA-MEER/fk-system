@@ -116,6 +116,7 @@ th 側の名前（`/measure/*`・`/map`・`/ui/active_screen`・`/safety/estop_u
 | --- | --- | --- | --- |
 | `heartbeat_period_ms` | ms | 200 | 先方（th の生存確認 5 Hz。th DetailedDesign-measure.md §3.4） |
 | `runner_stall_ms` | ms | 500 | 暫定（状態機械がこれより長く回らなければ生存確認を止める） |
+| `runner_period_ms` | ms | 100 | 暫定（状態機械を回すタイマーの周期。`runner_stall_ms` より十分短く。2026-11-11 に足した） |
 | `state_period_ms` | ms | 500 | 暫定 |
 | `th_status_stale_ms` | ms | 500 | 暫定（th の状態は 10 Hz。これより古ければ th の様子が読めないとみなし、動く指示を出さない） |
 | `lift_state_stale_ms` | ms | 500 | 暫定（昇降部の配信は 100 ms（hve の仮値）。その 5 回分。hve も足りると確かめた） |
@@ -178,12 +179,13 @@ th 側の名前（`/measure/*`・`/map`・`/ui/active_screen`・`/safety/estop_u
 | `fk_ws/th_ref` | 取り込む th のコミット（全桁 1 行。いまは th `feat/era3-measure` の `a33dd9a`） | 入れる |
 | `fk_ws/scripts/import_th.sh` | ホストで回す。`fk_ws/th_ref` のコミットから th の型と UDP プロファイルを `git archive` で取り出す（th の場所の既定は `../th-system`） | 入れる |
 | `fk_ws/src/th_system_msgs/` | 取り込み先（th の型） | **入れない**（`.gitignore`） |
-| `fk_ws/th_import/fastdds_udp.xml` | 取り込み先（UDP プロファイル） | **入れない**（`.gitignore`） |
+| `fk_ws/th_import/` | 取り込み先: UDP プロファイル `fastdds_udp.xml` と、取り出したコミット `th_ref`（`fk_ws/th_ref` と合っているかを `test.sh` が見る） | **入れない**（`.gitignore`） |
 | `fk_ws/scripts/test.sh` | コンテナの中で、取り込みが `th_ref` と合っているかの確認・`colcon build`・試験 | 入れる |
 | `fk_ws/src/fk_msgs/` | §4.1 の型 | 入れる |
 | `fk_ws/src/fk_auto/fk_auto/core.py` | 純関数と `Snapshot`（WP-AUTO-02） | 入れる |
 | `fk_ws/src/fk_auto/fk_auto/auto_runner.py` | ノード `auto_runner` | 入れる |
 | `fk_ws/src/fk_auto/test/` | 試験。`conftest.py` がホストの pytest から `fk_auto` を import できるようにする | 入れる |
 | `fk_ws/src/fk_sim/fk_sim/fake_th.py` | ノード `fake_th` | 入れる |
+| `fk_ws/src/fk_sim/test/` | `fake_th` を相手に ROS 2 で通す結合試験（コンテナの中で回す） | 入れる |
 | `fk_ws/src/fk_bringup/config/params.yaml` | §5 の値（ノード名 `auto_runner` の下） | 入れる |
 | `fk_ws/src/fk_bringup/launch/fk.launch.py` | 実機用の起動（`auto_runner`） | 入れる |
