@@ -83,3 +83,36 @@ def test_command_service_rejects_with_reason(make_harness):
     assert wait_until(lambda: h.state is not None, MARGIN_S)
     assert h.command('auto.start', ids=['P001']) == (False, 'phase_not_accepting')
     assert h.command('auto.bogus') == (False, 'bad_argument')
+
+
+def test_th_unreachable_when_command_service_is_not_visible_and_not_sent_later(make_harness):
+    """サービスが見えない間の meas.goal は、溜めずにその場で th_unreachable の拒否の返事になる。
+    あとでサービスが現れても、その指示は届かない。"""
+    import rclpy
+    from rclpy.node import Node
+    from th_system_msgs.srv import MeasureCommand
+    from fk_auto.auto_runner import RosThPort
+    node = Node('fk_unreachable_probe')
+    port = RosThPort(node)                       # 受け手はまだ居ない
+    assert not port._cli.service_is_ready()
+    port.send('u1', 'meas.goal', 'm', 1.0, 2.0, 0.0)
+    r = port.poll_replies()
+    assert [(x.command_id, x.accepted, x.reject_reason) for x in r] == [('u1', False, 'th_unreachable')]
+    got = []
+
+    def handler(req, resp):
+        got.append(req.command_id)
+        resp.accepted = True
+        return resp
+    node.create_service(MeasureCommand, '/measure/command', handler)
+    import threading
+    from rclpy.executors import SingleThreadedExecutor
+    ex = SingleThreadedExecutor()
+    ex.add_node(node)
+    t = threading.Thread(target=lambda: [ex.spin_once(timeout_sec=0.02) for _ in range(150)], daemon=True)
+    t.start()
+    assert wait_until(port._cli.service_is_ready, 5.0)
+    t.join()
+    assert got == [] and port.poll_replies() == []     # 後から届かない
+    ex.shutdown()
+    node.destroy_node()

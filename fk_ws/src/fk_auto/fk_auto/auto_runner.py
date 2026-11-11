@@ -70,7 +70,6 @@ class RosThPort(ThPort):
         self._grid: Optional[core.Grid] = None
         self._replies: List[ThReply] = []
         self._results: List[ThResult] = []
-        self._unsent: List[MeasureCommand.Request] = []     # サービスがまだ見えないあいだ溜める
         node.create_subscription(MeasureStatus, '/measure/status', self._on_status, QOS_STATUS)
         node.create_subscription(MeasureResult, '/measure/result', self._on_result, QOS_RESULT)
         node.create_subscription(OccupancyGrid, '/map', self._on_map, QOS_MAP)
@@ -102,22 +101,30 @@ class RosThPort(ThPort):
         req = MeasureCommand.Request()
         req.command_id, req.command, req.map_instance_id = command_id, command, map_instance_id
         req.x, req.y, req.yaw = float(x), float(y), float(yaw)
-        self._unsent.append(req)
-        self.flush()
-
-    def flush(self) -> None:
-        """サービスが見えていれば、溜めた指示を非同期で呼ぶ。"""
-        if not self._unsent or not self._cli.service_is_ready():
+        # サービスが見えなければ溜めて後で送らず、その場で拒否（th_unreachable）の返事にする
+        # （関門を通した時点から様子が変わっているかもしれないため）
+        if not self._cli.service_is_ready():
+            self._unreachable(command_id)
             return
-        pending, self._unsent = self._unsent, []
-        for req in pending:
+        try:
             fut = self._cli.call_async(req)
-            fut.add_done_callback(lambda f, cid=req.command_id: self._on_reply(cid, f))
+        except Exception:
+            self._unreachable(command_id)
+            return
+        fut.add_done_callback(lambda f, cid=command_id: self._on_reply(cid, f))
+
+    def _unreachable(self, command_id: str) -> None:
+        self._replies.append(ThReply(command_id, False, 'th_unreachable'))
 
     def _on_reply(self, command_id: str, fut) -> None:
-        r = fut.result()
-        if r is not None:
-            self._replies.append(ThReply(command_id, r.accepted, r.reject_reason, r.mode, r.state))
+        try:
+            r = fut.result()
+        except Exception:
+            r = None
+        if r is None:
+            self._unreachable(command_id)
+            return
+        self._replies.append(ThReply(command_id, r.accepted, r.reject_reason, r.mode, r.state))
 
     def poll_replies(self):
         out, self._replies = self._replies, []
@@ -189,7 +196,6 @@ class AutoRunner(Node):
         for fn in self._pre_step:
             fn(t)
         self.runner.step(t)             # 例外は握りつぶさない
-        self._th.flush()
         self._last_run = time.monotonic()   # step を呼び終えてから記録する
         self._publish_if_changed()
 
