@@ -272,3 +272,10 @@ def test_group_rows_front_back_offset_splits():
     """前後に離れた同じ向きの盤は、横が重なっても別の列。"""
     rows = group_rows([P("a", 0, 0), P("b", 2.0, 0)], 0.17, 0.3)
     assert len(rows) == 2
+
+
+def test_unseen_contained_range_does_not_shrink_merged():
+    """大きい範囲の中に小さい範囲が入っていても、見た範囲は縮まない。"""
+    out = unseen_ranges([0.0, 0.5], [3.0, 1.0], 0.0)
+    assert len(out) == 1
+    assert close(out[0][0], 3.0) and close(out[0][1], wrap_angle(2 * PI))
