@@ -123,6 +123,7 @@ th-system・hve-system で踏んだもののうち、同じ道具（herdr／orca
 - **opencode の質問画面（選択肢つきの確認）は、ペインが低いと入力欄が画面外に出て、`herdr agent prompt` の文字が入らない**（hve-system 2026-09-28）。`herdr pane zoom <pane> --on` で広げ、`herdr pane read --source visible` で入力欄を確かめてから `herdr pane send-text` → `herdr pane send-keys <pane> Enter` で答える。終わったら `--off` で戻す。
 - **既に opencode が動いているペインに `herdr agent start` を打たない。**`start` はシェルプロンプト待ちを期待するため、動作中のセッションに文字列を打ち込んで壊す。`herdr agent rename` だけで登録する。
 - **別セッションへの `SendMessage` は、相手の許可モードがこちらと違うと相手側で保留になり、相手のユーザーが承認するまで届かない**（2026-11-01。orca で起動した th・hve は bypass だった）。保留の通知が来たら再送せず、ユーザーに相手のターミナルでの承認を頼む（ImplementationPlan §2.4）。
+- **ホストの pytest は、`~/.local` に入った anyio のプラグインが apt の古い pytest と合わず、起動の時点で `No module named '_pytest.scope'` で落ちる**（2026-11-11）。ホストで回すときは `python3 -B -m pytest -p no:cacheprovider -p no:anyio` にする。
 - **`pkill -f <パターン>` は自分のシェルを殺すことがある**（パターンが自分のコマンドラインにマッチする。docker の中でもホストでも）。PID 指定で止める。
 - **今の昇降部のファームに `ceiling_sensor: false` で繋いで上昇させると、天井を見ずに上がる**（hve-system 2026-11-05。効くのは上端・下端・連続駆動の上限だけ）。hve の複数モジュール対応のパケットが入ったと知らせが来るまで、**本システムから昇降部へ繋いで試すときは下降と止めるだけにする。**
 - **th-system と同じ PC の別コンテナから th のトピックを購読すると、一覧には出るのに 0 件しか届かない**（th-system 2026-10-26。th 側の IPC が private で、FastDDS が共有メモリで送るため）。受ける側を UDP だけにする（th `th_ws/scripts/vibe_measure/fastdds_udp.xml` を `FASTRTPS_DEFAULT_PROFILES_FILE` で渡す）。**th の実機が動いている間に試験を回すと、同じ `ROS_DOMAIN_ID` で混線する**（th-system 2026-09-23）。試験はドメインを分ける。ROS2・Docker のほかの癖は、最初の作業パケットで th-system `CLAUDE.md` から拾う。
