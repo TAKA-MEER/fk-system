@@ -342,8 +342,30 @@ def test_watch_other_th_states_do_nothing(state):
     assert not drive_watch(snap, P).stop
 
 
-def test_watch_th_unreadable_does_nothing():
+def test_watch_th_never_read_does_nothing():
     snap = with_lift(replace(good(), th=None), height_above_bottom_mm=1000.0)
     assert not drive_watch(snap, P).stop
-    snap = with_lift(with_th(good(), state="NAV", read_ms=NOW - 501), height_above_bottom_mm=1000.0)
+
+
+def test_watch_th_stale_nav_still_watches_drift():
+    """th の状態が古くても、最後の状態が NAV なら昇降機の離れで止める。"""
+    snap = with_lift(with_th(good(), state="NAV", read_ms=NOW - 5000),
+                     height_above_bottom_mm=50.0, at_bottom=False)
+    r = drive_watch(snap, P)
+    assert r.stop and r.reason == "lift_drift"
+
+
+def test_watch_th_stale_nav_height_stale_stops():
+    snap = with_lift(with_th(good(), state="NAV", read_ms=NOW - 5000), height_read_ms=NOW - 501)
+    r = drive_watch(snap, P)
+    assert r.stop and r.reason == "state_unreadable"
+
+
+def test_watch_th_stale_nav_ok_when_at_bottom():
+    assert not drive_watch(with_th(good(), state="NAV", read_ms=NOW - 5000), P).stop
+
+
+def test_watch_th_stale_last_state_adjust_does_nothing():
+    snap = with_lift(with_th(good(), state="ADJUST", read_ms=NOW - 5000),
+                     height_above_bottom_mm=1000.0)
     assert not drive_watch(snap, P).stop

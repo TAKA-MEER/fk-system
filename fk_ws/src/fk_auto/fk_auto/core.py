@@ -611,13 +611,15 @@ _WATCHED_TH_STATES = ("NAV", "ALIGN", "BLOCKED")
 def drive_watch(snapshot: Snapshot, params: Params = Params()) -> WatchResult:
     """走っている間の見張り。止めるなら stop=True と理由キー。
 
-    th の状態が NAV・ALIGN・BLOCKED のときだけ見る（ADJUST を含むそれ以外・th が読めないときは
-    何もしない。th が読めなければ関門が動く指示を通さず、停止は th 側の途絶の扱いに任せる）。
+    th の状態が NAV・ALIGN・BLOCKED のときだけ見る（ADJUST を含むそれ以外は何もしない）。
+    th の状態が古くても、最後に読めた state で判定する。th の状態の通り道が不調でも生存確認は出続け、
+    th は走り続けうるので、その間の昇降機の見張りを外さない（迷ったら止める側）。
+    一度も読めていない（th が None）ときだけ何もしない。
     昇降機の高さか腕の状態（測定機構なしを除く）が lift_state_stale_ms を超えて届かない →
     state_unreadable。下端から lift_drift_stop_mm 以上離れた → lift_drift。
     """
     s, p = snapshot, params
-    if not _th_readable(s, p) or s.th.state not in _WATCHED_TH_STATES:
+    if s.th is None or s.th.state not in _WATCHED_TH_STATES:
         return WatchResult(False)
     height_ok = (s.lift is not None and s.lift.height_above_bottom_mm is not None
                  and _fresh(s.lift.height_read_ms, s.now_ms, p.lift_state_stale_ms))
