@@ -17,7 +17,7 @@ fi
 rm -rf "$WS/src/th_system_msgs" "$WS/th_import"
 mkdir -p "$WS/src" "$WS/th_import"
 
-# th_ws/src/th_system_msgs -> fk_ws/src/th_system_msgs/（先頭 3 階層を落とす）
+# th_ws/src/th_system_msgs -> fk_ws/src/th_system_msgs/（先頭 2 階層 th_ws/src を落とす）
 git -C "$TH_REPO" archive "$REF" th_ws/src/th_system_msgs | tar -x -C "$WS/src" --strip-components=2
 # UDP プロファイル
 git -C "$TH_REPO" archive "$REF" th_ws/scripts/vibe_measure/fastdds_udp.xml \
