@@ -70,7 +70,7 @@
 | `SELECT` | 人が盤を選んで「開始」（`auto.start`）するのを待つ。「もう一度探す」（`auto.rescan`）→ `SURVEY` | 開始 → 回る順を決めて（§3 `order_panels`）`LOWER` |
 | `LOWER` | 昇降機が下端でなければ下げる | 下端 → `GOAL`。下げられない → `HALTED` |
 | `GOAL` | 立ち位置（§3 `stand_pose`）へ `meas.goal`。`BLOCKED` が `blocked_wait_s` 続いたら `meas.reroute`（`reroute_max` 回まで） | `ARRIVED` → `RECHECK`。解けない → `meas.abort` → 飛ばす（`no_path`）。立てない（§3 `stand_blocked`）→ 出さずに飛ばす（`stand_blocked`） |
-| `RECHECK` | その盤の方向を ss に依頼して認識し直し、配置図を直す。立ち位置を求め直す。結果が使えなければ依頼し直す（`ss_retry_max` 回まで） | ずれが許容差内 → `AT_PANEL`。超える → 1 回だけ `GOAL` に戻る。2 回目も超える → 飛ばす（`stand_mismatch`）。見つからない → 飛ばす（`top_not_found`）。ss が「必要な高さまで上がれない」を返した → 飛ばす（`camera_too_low`）。時間切れ・使える結果が得られない → 取り消して後片付けを待ち、飛ばす（`ss_failed`） |
+| `RECHECK` | その盤の方向を ss に依頼して認識し直し、配置図を直す（**その盤とみなすのは、配置図の中心から `recheck_match_max_m` 以内で最も近い矩形。無ければ `top_not_found`**。2026-11-11。隣の盤を取り違えないため）。立ち位置を求め直す。結果が使えなければ依頼し直す（`ss_retry_max` 回まで） | ずれが許容差内 → `AT_PANEL`。超える → 1 回だけ `GOAL` に戻る。2 回目も超える → 飛ばす（`stand_mismatch`）。見つからない → 飛ばす（`top_not_found`）。ss が「必要な高さまで上がれない」を返した → 飛ばす（`camera_too_low`）。時間切れ・使える結果が得られない → 取り消して後片付けを待ち、飛ばす（`ss_failed`） |
 | `AT_PANEL` | 測定機構の口に盤前の作業を渡し、結果を待つ | 結果を記録 → 次の盤の `LOWER`。全部済み → `FINISH` |
 | `FINISH` | 昇降機を下げ、最後の盤の前で待つ。結果の一覧を出す | 人が選び直して「開始」→ `LOWER` |
 
@@ -87,6 +87,18 @@
 | 人の「中止」（`auto.abort`） | 走っていれば `meas.abort` で止めて `SELECT`。`AT_PANEL` なら測定機構の口に中止を渡し、腕の格納を待ってから `SELECT` | — |
 | **th が動く指示を拒否した**（**暫定。2026-11-11 実装管理担当の案。ユーザーの確認待ち**。仕様・設計に無かった） | **自分からは出し直さない。**理由は `AutoState.th_reject_reason` に出す。`localization_lost`・`map_mismatch` → `REENTRY`（地図か配置図が古い）。`meas.goal` のほかの理由（`corner_obstacle` など）→ `SELECT` に戻る（th は `WAIT` のまま。測り終えた盤の結果は残す）。`meas.start` → `PAUSED` のまま。`meas.reroute` → 再計算 1 回の失敗として数える（`reroute_max` を超えたら `meas.abort` → 飛ばす `no_path`）。止める側（`meas.stop`・`meas.abort`・`meas.finish`）が拒否されたら、th の状態で止まっていると分かれば待たずに進む（結果は来ない） | 人が選び直して「開始」／もう一度「走行」 |
 | 人の「終了」（`auto.finish`） | 腕が格納位置になければ、画面で確認が済んだ印（`arm_confirmed`）が要る。**腕の状態が読めないときも、格納位置にないのと同じに確認を求める**。`meas.finish` → `IDLE` | — |
+
+**WP-AUTO-03 の実装で決めたこと（2026-11-11。設計どうしの食い違いと、書いていなかった細部）**
+
+| 場面 | 決めたこと |
+| --- | --- |
+| `SURVEY` 中に ss が「人の操作で中断」（`human_override`）を返した | §2.2 の行（人が昇降機を操作した）を優先する。途中の結果は使わず `PAUSED`、人の「走行」で `SURVEY` をやり直す。時間切れなどほかの途中の終わり方は、返った盤と見た範囲を配置図に使う |
+| 走っている間に昇降機の高さか腕の状態が読めなくなった | `meas.stop` を出して `HALTED`（`state_unreadable`。[Spec-auto.md](../spec/Spec-auto.md) §6 の「全体を止める」）。下端から離れた（`lift_drift`）は `PAUSED` で、人の「走行」で戻る |
+| `PAUSED` から「走行」で戻る | `GOAL`・`AT_PANEL` は続きから、ほかは段の頭から。`PAUSED` に落ちるときに出していた ss の依頼は取り消す |
+| 人が昇降機を操作した割り込み | 本システムが昇降機を下げている間（`PREPARE`・`LOWER`・`FINISH`）だけ見る |
+| 人の「中止」で外れた盤 | 結果を残さない（経路が解けない `no_path` は残す） |
+| `SURVEY` で ss に依頼を出せない（関門が通さない・ss が受けない） | 待ち続ける（理由は `gate_reason`）。人は「終了」で抜けられる |
+| ss の結果が来ないとみなす時刻 | 依頼から `ss_result_timeout_s` ＋ `ss_status_stale_ms`（ss 自身の時間切れの結果を先に受けるため） |
 
 ### 2.3 測定機構なしの道
 
