@@ -16,9 +16,11 @@ if [ "${ROS_DOMAIN_ID:-10}" = "10" ]; then
 fi
 
 # 3. ビルド
+set +u   # ROS の setup.bash は未設定変数を参照する
 source /opt/ros/humble/setup.bash
 colcon build
 source install/setup.bash
+set -u
 
 # 4. 試験（パッケージごとに回す）
 rc=0
