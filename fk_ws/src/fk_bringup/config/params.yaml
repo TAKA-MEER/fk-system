@@ -1,0 +1,8 @@
+# 正本は docs/plan/detailed/DetailedDesign-names.md §5
+auto_runner:
+  ros__parameters:
+    heartbeat_period_ms: 200
+    runner_stall_ms: 500
+    runner_period_ms: 100
+    state_period_ms: 500
+    th_status_stale_ms: 500

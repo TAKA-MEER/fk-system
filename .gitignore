@@ -36,3 +36,10 @@ desktop.ini
 
 # herdr/orca 用の実装ブリーフ置き場（共有しない）
 .briefs/
+
+# fk_ws（colcon の生成物と、th から取り込んだもの。fk_ws/scripts/import_th.sh が作る）
+fk_ws/build/
+fk_ws/install/
+fk_ws/log/
+fk_ws/src/th_system_msgs/
+fk_ws/th_import/
