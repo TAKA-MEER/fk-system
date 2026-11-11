@@ -54,6 +54,7 @@
 | `ThPort`・`LiftPort`・`SsPort`・`ArmPort` | 口（[-auto.md](DetailedDesign-auto.md) §1.3） |
 | `FakeTh`・`FakeLift`・`FakeSs`・`NoMechanism` | 偽の口（ROS 2 なしの試験用）。`NoMechanism` は最初の版の測定機構の口（測定機構なし） |
 | `to_map`・`front_edge`・`is_confident`・`group_rows`・`order_panels`・`stand_pose`・`stand_blocked`・`needs_regoal`・`ss_result_valid`・`can_run`・`classify_skip`・`classify_halt`・`gate`・`drive_watch` | 純関数（[-auto.md](DetailedDesign-auto.md) §3・§4） |
+| `CMD_LIFT_LOWER`（`"lift.lower"`）・`CMD_SS_REQUEST`（`"ss.request"`） | `gate` に渡す「昇降機を下げる」「ss への依頼」（`fk_auto.core` の定数。外へは出さない。2026-11-11 WP-AUTO-02） |
 | `TH_INTERFACE_VERSION` | 取り込んだ th の型の版（`"1"`。th [DetailedDesign-measure.md](../../../../th-system/docs/plan/detailed/DetailedDesign-measure.md) §1.2）。生存確認に載せ、`/measure/status` の版と比べる。**`fk_ws/th_ref`（§7）を進めるときに一緒に見直す**（2026-11-11） |
 
 外に出る文字列（段・理由・指示・パラメータ・トピック・型の欄）はこの文書にあるものだけを使う。**Python の中だけの名前（関数の引数・dataclass の欄・内部の列挙・試験の名前）は実装者が決めてよい**（2026-11-11）。パラメータを dataclass で受けるときは、欄の名前を §5 の名前に揃える。
