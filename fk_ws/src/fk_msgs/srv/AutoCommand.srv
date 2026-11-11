@@ -1,0 +1,7 @@
+# 画面 -> auto_runner の指示（auto.*）。正本は docs/plan/detailed/DetailedDesign-names.md §4.1・§4.2。
+string command
+string[] panel_ids       # auto.start だけ
+bool arm_confirmed       # auto.finish だけ。画面で腕の確認が済んだ
+---
+bool accepted
+string reject_reason
