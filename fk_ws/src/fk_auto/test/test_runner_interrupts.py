@@ -433,3 +433,23 @@ def test_reject_stop_side_when_th_is_already_stopped_does_not_wait_for_result():
     w.th.model.state = "WAIT"                     # すでに止まっている。abort は拒否される
     w.th.model.pending = None
     w.until_phase("SELECT")
+
+
+def test_halt_sender_refuses_moving_and_lowering_even_when_gate_would_pass_but_allows_stop_side():
+    """HALTED の間は、関門が通る条件でも、動く指示・下降・ss への依頼を送り口が出さない。"""
+    arm = FakeArm(outcome=("HALT", "arm_stuck"))
+    w = World([WPanel(3.0, 0.0)], mechanism=True, arm=arm)
+    w.to_select()
+    w.start()
+    w.until_phase("HALTED")
+    w.lift.height_mm = 0
+    w.tick(3)
+    n_th, n_lift, n_ss = len(w.th.sent), len(w.lift.commands), len(w.ss.requests)
+    assert w.runner._emit("meas.goal", map_instance_id="map-1", x=1, y=1, yaw=0) is None
+    assert w.runner._emit("meas.start") is None
+    assert w.runner._emit("meas.reroute") is None
+    from fk_auto import core
+    assert w.runner._emit(core.CMD_LIFT_LOWER) is None
+    assert w.runner._emit(core.CMD_SS_REQUEST, azimuth_from_rad=0, azimuth_span_rad=1) is None
+    assert (len(w.th.sent), len(w.lift.commands), len(w.ss.requests)) == (n_th, n_lift, n_ss)
+    assert w.runner._emit("meas.stop") is not None           # 止める側は通す
