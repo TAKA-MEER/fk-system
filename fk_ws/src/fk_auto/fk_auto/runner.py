@@ -614,6 +614,8 @@ class Runner:
         if not readable:
             self._gate_reason = "state_unreadable"    # 高さが読めないまま下げない
             return "wait"
+        if lift.operator_is_human:
+            return "wait"                             # 人が操作している間は自分の命令を出さない
         self._emit(core.CMD_LIFT_LOWER, snap)         # 通らなければ出さない（次の step でまた見る）
         return "wait"
 
@@ -662,6 +664,9 @@ class Runner:
                 if self._emit("meas.start", snap) is not None:
                     self._run_req = False
             elif d.kind == "lower_first":
+                if snap.lift is not None and snap.lift.operator_is_human:
+                    self._run_req = False         # 人が操作した: 自分の命令をやめ、押し直さない（新しい「走行」を待つ）
+                    return
                 self._lower_step(snap)
             else:
                 self._run_req = False

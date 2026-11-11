@@ -400,7 +400,7 @@ def test_reject_start_stays_paused():
     w.until_phase("FINISH")
 
 
-def test_reject_start_localization_lost_goes_to_reentry():
+def test_reject_start_when_th_requires_reentry_goes_to_reentry():  # 状態の旗でも拒否でも REENTRY へ（どちらの道かまでは分けない）
     w = World([WPanel(3.0, 0.0)])
     to_nav(w)
     w.th.model.human_jog()
@@ -453,3 +453,27 @@ def test_halt_sender_refuses_moving_and_lowering_even_when_gate_would_pass_but_a
     assert w.runner._emit(core.CMD_SS_REQUEST, azimuth_from_rad=0, azimuth_span_rad=1) is None
     assert (len(w.th.sent), len(w.lift.commands), len(w.ss.requests)) == (n_th, n_lift, n_ss)
     assert w.runner._emit("meas.stop") is not None           # 止める側は通す
+
+
+def test_human_operating_lift_while_lowering_for_run_stops_commands_and_needs_new_run():
+    """PAUSED で「走行」→ 先に下げる、の途中で人が昇降機を操作したら、命令をやめ押し直さない。"""
+    w = World([WPanel(3.0, 0.0)])
+    to_nav(w)
+    w.th.model.human_jog()
+    w.until_phase("PAUSED")
+    w.lift.height_mm = 1000
+    w.tick()
+    assert w.cmd("auto.run").accepted
+    w.tick()
+    n = w.lift.lowers()
+    assert n >= 1
+    w.lift.human_operating = True
+    w.tick(10)
+    assert w.lift.lowers() == n and w.phase == "PAUSED"
+    assert "meas.start" not in w.th_cmds()
+    w.lift.human_operating = False
+    w.tick(3)
+    assert w.lift.lowers() == n                   # 自動では下げ直さない（新しい「走行」を待つ）
+    assert w.cmd("auto.run").accepted
+    w.until_phase("GOAL")
+    assert w.lift.height_mm == 0
