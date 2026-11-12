@@ -1248,7 +1248,7 @@ table.lst td.r{text-align:right}
       <button class="btn" onclick="scene('LOWER')">下げる（待ち）</button>
       <button class="btn" onclick="scene('GOAL')">移動</button>
       <button class="btn" onclick="scene('PAUSED')">一時停止</button>
-      <button class="btn" onclick="scene('AT_PANEL')">盤前（機構なし）</button>
+      <button class="btn" onclick="scene('AT_PANEL')">盤前</button>
       <button class="btn" onclick="scene('FINISH')">回り終え</button>
     </div></div>
     <div class="dgrp"><span>止まる・つながらない</span><div class="drow">
@@ -1374,28 +1374,29 @@ const ORDER = ['P008','P009','P004','P003','P002','P001'];   // 回る順（近�
 const SC = {};
 function base(){ return {phase:'SELECT', panels:PANELS.map(p=>p.id), sel:new Set(), queue:[], cur:'',
   results:{}, robot:{x:ORIGIN.x,y:ORIGIN.y,yaw:90*D2R}, gate:'', halt:'', thReject:'', surveyWhy:'', pauseWhy:'',
-  fkLost:false, thLost:false, lastStep:2, lift:'bottom', ss:'待機', thState:'WAIT', thReentry:false}; }
+  fkLost:false, thLost:false, lastStep:2, lift:'bottom', ss:'待機', thState:'WAIT', thReentry:false,
+  run:null, tp:0, from:''}; }   // run = 今回の巡回 {ids: 回る順, done: 済んだ盤}。tp = 今の段に入ってからの ms（模擬用）
 SC.SURVEY = () => Object.assign(base(),{phase:'SURVEY',panels:[],ss:'探しています',lastStep:1});
 SC.SELECT = () => Object.assign(base(),{sel:new Set(['P001','P002','P003','P004','P008','P009'])});
 SC.EMPTY  = () => Object.assign(base(),{panels:[],surveyWhy:'no_lugs'});
 SC.REJECT = () => Object.assign(SC.SELECT(),{thReject:'corner_obstacle'});
-SC.LOWER  = () => Object.assign(base(),{phase:'LOWER',queue:ORDER.slice(1),cur:'P008',sel:new Set(ORDER),gate:'ss_busy',
+SC.LOWER  = () => Object.assign(base(),{phase:'LOWER',queue:ORDER.slice(1),cur:'P008',run:{ids:ORDER.slice(),done:[]},gate:'ss_busy',
   lift:'下端から 420 mm',ss:'後片付け中',lastStep:3});
 const RUN_RES = {P008:['DONE'],P009:['SKIPPED','top_not_found'],P004:['DONE']};
-SC.GOAL   = () => Object.assign(base(),{phase:'GOAL',queue:['P002','P001'],cur:'P003',sel:new Set(ORDER),results:{...RUN_RES},
+SC.GOAL   = () => Object.assign(base(),{phase:'GOAL',queue:['P002','P001'],cur:'P003',run:{ids:ORDER.slice(),done:['P008','P009','P004']},results:{...RUN_RES},
   robot:{x:5.78,y:7.72,yaw:180*D2R},thState:'NAV',lastStep:3});
-SC.PAUSED = () => Object.assign(SC.GOAL(),{phase:'PAUSED',pauseWhy:'jog',thState:'PAUSE'});
+SC.PAUSED = () => Object.assign(SC.GOAL(),{phase:'PAUSED',pauseWhy:'jog',thState:'PAUSE',from:'GOAL'});
 SC.AT_PANEL=() => Object.assign(SC.GOAL(),{phase:'AT_PANEL',robot:{x:5.2,y:7.71,yaw:90*D2R},thState:'WAIT'});
 SC.FINISH = () => Object.assign(base(),{phase:'FINISH',sel:new Set(),
   results:{...RUN_RES,P003:['DONE'],P002:['SKIPPED','stand_blocked'],P001:['DONE']},
-  robot:{x:3.2,y:7.71,yaw:90*D2R},lastStep:4});
+  run:{ids:ORDER.slice(),done:ORDER.slice()},robot:{x:3.2,y:7.71,yaw:90*D2R},lastStep:4});
 SC.HALTED = () => Object.assign(SC.GOAL(),{phase:'HALTED',halt:'lift_not_lowered',lift:'高さが読めません',thState:'WAIT'});
 SC.REENTRY= () => Object.assign(SC.GOAL(),{phase:'REENTRY',cur:'',queue:[],thState:'WAIT',thReentry:true});
 SC.FK_LOST= () => Object.assign(SC.GOAL(),{fkLost:true});
 SC.TH_LOST= () => Object.assign(SC.GOAL(),{thLost:true});
 
 let S = SC.SELECT();
-let ARM = 'none';                  // 'none' 測定機構なし / 'stowed' / 'unknown'
+let ARM = 'stowed';                // 'none' 測定機構なし / 'stowed' 格納位置 / 'unknown' 読めない
 let estop = false, fault = null, faultHidden = false, armedAbort = null;
 
 function scene(name){
@@ -1408,9 +1409,10 @@ function scene(name){
 function render(){ paintHeader(); paintBanner(); paintSteps(); paintOpbar(); paintMap(); paintNext(); paintOps(); paintTour(); paintList(); paintResults(); paintDevices(); }
 const isRunning = () => RUNNING.includes(S.phase);
 const canPick = () => PICKABLE.includes(S.phase) && !S.fkLost;
-function runTotal(){ return S.queue.length + (S.cur?1:0) + Object.keys(S.results).length; }
-function runIndex(){ return Object.keys(S.results).length + (S.cur?1:0); }
-function runIndexOf(id){ const order = S.cur ? [S.cur, ...S.queue] : S.queue; return Object.keys(S.results).length + order.indexOf(id) + 1; }
+function runTotal(){ return S.run ? S.run.ids.length : 0; }
+function runIndex(){ return S.run ? S.run.done.length + (S.cur?1:0) : 0; }
+function runIndexOf(id){ return S.run ? S.run.ids.indexOf(id) + 1 : 0; }
+function runCounts(){ let done=0, skip=0; if(S.run) for(const id of S.run.done){ const r = S.results[id]; if(r) r[0]==='DONE'?done++:skip++; } return {done,skip}; }
 function counts(){ let done=0, skip=0; for(const r of Object.values(S.results)) r[0]==='DONE'?done++:skip++; return {done,skip}; }
 const skipped = () => Object.entries(S.results).filter(([,r])=>r[0]==='SKIPPED').map(([id])=>id);
 
@@ -1508,7 +1510,7 @@ function paintOps(){
 }
 
 function paintTour(){
-  const el = $('tour'), c = counts();
+  const el = $('tour'), c = runCounts();
   if(PICKABLE.includes(S.phase) || ['SURVEY','PREPARE'].includes(S.phase)){
     const n = S.panels.length, dis = canPick() && n ? '' : ' disabled', disR = canPick() ? '' : ' disabled';
     el.innerHTML =
@@ -1686,19 +1688,83 @@ function onNext(){
   if($('nextAct').classList.contains('info')) return;
   if(S.phase==='FINISH' && !S.sel.size){ S.sel = new Set(skipped()); selectTab('tp1'); render(); return; }
   if(!S.sel.size) return reject(REJECT.bad_argument + '。');
-  S.thReject = ''; scene('LOWER');
+  // auto.start（選んだ盤）。回る順は機能側が決める（order_panels）。ここでは同じ決め方をまねる
+  const order = orderPanels([...S.sel], S.robot);
+  for(const id of order) delete S.results[id];      // 選び直した盤は測り直す
+  S.run = {ids: order, done: []}; S.cur = order[0]; S.queue = order.slice(1); S.sel = new Set();
+  S.thReject = ''; S.gate = ''; S.lastStep = 3; clearArmed(); enter('LOWER', 'WAIT'); selectTab('tp1'); render();
 }
-function onStop(){ S.phase = 'PAUSED'; S.pauseWhy = 'stop'; S.thState = 'PAUSE'; render(); }
-function onRun(){ if(S.phase!=='PAUSED') return; S.phase = 'GOAL'; S.thState = 'NAV'; render(); }
+function onStop(){ S.from = S.phase; S.phase = 'PAUSED'; S.pauseWhy = 'stop'; S.thState = 'PAUSE'; render(); }
+function onRun(){
+  if(S.phase!=='PAUSED') return;
+  // 機能側の決まり: GOAL・AT_PANEL は続きから、ほかは段の頭から（-auto.md §2.2）
+  const back = S.from || 'GOAL'; S.phase = back; S.thState = back==='GOAL' ? 'NAV' : 'WAIT';
+  if(back!=='GOAL' && back!=='AT_PANEL') S.tp = 0;
+  render();
+}
 function onRescan(){ scene('SURVEY'); setTimeout(()=>{ if(S.phase==='SURVEY') scene('SELECT'); }, 2500); }
 function onAbort(){
   if(armedAbort === null){ armedAbort = 10; tickArmed(); return paintTour(); }
-  clearArmed(); const keep = S.results; S = SC.SELECT(); S.results = keep; S.sel = new Set(); render();
+  // 中止: 止めて盤の選択に戻る。測り終えた盤の結果は残し、中止で外れた盤は結果を残さない
+  clearArmed(); S.cur = ''; S.queue = []; S.run = null; S.sel = new Set(); S.lastStep = 2; enter('SELECT', 'WAIT'); render();
 }
 let armTimer = null;
 function tickArmed(){ clearInterval(armTimer); armTimer = setInterval(()=>{ armedAbort--; if(armedAbort <= 0) clearArmed(); paintTour(); }, 1000); }
 function clearArmed(){ clearInterval(armTimer); armTimer = null; armedAbort = null; }
 function reject(m){ $('wrBody').textContent = m; openWin('winReject'); }
+
+/* ================= 模擬（モックアップだけ。実装では機能側の AutoState が進める） =================
+   段の進み方は -auto.md §2.1: LOWER → GOAL（走る → 向きを合わせる）→ RECHECK → AT_PANEL → 次の盤の LOWER …→ FINISH。
+   立ち位置が塞がっていれば飛ばす（stand_blocked）、位置が確かでない盤は認識し直して見つからず飛ばす（top_not_found）、
+   測定機構なしなら盤前の作業を飛ばす（no_mechanism）。速さは見やすさのため実機より速い */
+const SIM_DT = 100, SIM_SPEED = 1.5;
+let simOn = true;
+function enter(phase, thState){ S.phase = phase; S.tp = 0; if(thState) S.thState = thState; }
+function orderPanels(ids, from){   // 近い列から。列の中は正面に向かって右から（-auto.md §3 order_panels）
+  const rows = {}; for(const id of ids){ (rows[PBY[id].row] ||= []).push(id); }
+  const right = id => { const p = PBY[id]; return -Math.sin(p.yaw)*p.x + Math.cos(p.yaw)*p.y; };
+  const left = Object.values(rows); left.forEach(r => r.sort((a,b) => right(b) - right(a)));
+  const out = []; let pos = {x:from.x, y:from.y};
+  const dist = r => Math.min(...r.map(id => Math.hypot(PBY[id].x - pos.x, PBY[id].y - pos.y)));
+  while(left.length){ left.sort((a,b) => dist(a) - dist(b)); const r = left.shift(); out.push(...r); const q = PBY[r[r.length-1]]; pos = {x:q.x, y:q.y}; }
+  return out;
+}
+function standBlocked(st){ const h = FOOT/2; return OBST.some(([x,y,w,hh]) => st.x+h > x && st.x-h < x+w && st.y+h > y && st.y-h < y+hh); }
+const lerpAngle = (a, b, k) => a + Math.atan2(Math.sin(b-a), Math.cos(b-a)) * k;
+function finishPanel(res){
+  S.results[S.cur] = res; S.run.done.push(S.cur);
+  if(S.queue.length){ S.cur = S.queue.shift(); enter('LOWER', 'WAIT'); }
+  else { S.cur = ''; enter('FINISH', 'WAIT'); S.lastStep = 4; selectTab('tp2'); }
+  render();
+}
+function simTick(){
+  if(!simOn || estop || S.fkLost || !S.run || !['LOWER','GOAL','RECHECK','AT_PANEL'].includes(S.phase)) return;
+  S.tp += SIM_DT;
+  switch(S.phase){
+    case 'LOWER':
+      if(S.gate){ if(S.tp >= 2500){ S.gate = ''; S.lift = 'bottom'; S.ss = '待機'; S.tp = 0; render(); } return; }
+      if(S.tp < 600) return;
+      S.lift = 'bottom';
+      if(standBlocked(stand(PBY[S.cur]))) return finishPanel(['SKIPPED','stand_blocked']);   // 立てないので目的地を出さない
+      enter('GOAL', 'NAV'); S.alignAt = null; return render();
+    case 'GOAL': {
+      const st = stand(PBY[S.cur]), rb = S.robot, dx = st.x - rb.x, dy = st.y - rb.y, d = Math.hypot(dx, dy), step = SIM_SPEED * SIM_DT / 1000;
+      if(d > step && S.alignAt == null){ rb.x += dx/d*step; rb.y += dy/d*step; rb.yaw = Math.atan2(dy, dx); return paintMap(); }
+      if(S.alignAt == null){ rb.x = st.x; rb.y = st.y; S.alignAt = S.tp; S.alignFrom = rb.yaw; S.thState = 'ALIGN'; paintDevices(); }
+      const k = Math.min(1, (S.tp - S.alignAt) / 500); rb.yaw = lerpAngle(S.alignFrom, st.yaw, k); paintMap();
+      if(k >= 1){ enter('RECHECK', 'WAIT'); render(); }
+      return;
+    }
+    case 'RECHECK':
+      if(S.tp < 900) return;
+      if(!PBY[S.cur].confident) return finishPanel(['SKIPPED','top_not_found']);
+      enter('AT_PANEL', 'WAIT'); return render();
+    case 'AT_PANEL':
+      if(S.tp < 1400) return;
+      return finishPanel(ARM==='none' ? ['SKIPPED','no_mechanism'] : ['DONE']);
+  }
+}
+setInterval(simTick, SIM_DT);
 
 /* 終了: 腕が格納位置か測定機構なしなら普通の確認、そうでなければ腕の確認（th と同じ文言） */
 function onExit(){
@@ -1723,7 +1789,7 @@ function setArm(a){ ARM = a; ['armB0','armB1','armB2'].forEach((id,i)=>$(id).cla
 /* th の異常（W-1）と非常停止。選択肢は th の決まり（自律測定: 解決したら「確認」1 択 → 一時停止） */
 function raiseFault(){
   fault = {label:'LiDAR 途絶', resolved:false}; faultHidden = false;
-  if(isRunning()){ S.phase = 'PAUSED'; S.pauseWhy = 'fault'; S.thState = 'PAUSE'; }
+  if(isRunning()){ S.from = S.phase; S.phase = 'PAUSED'; S.pauseWhy = 'fault'; S.thState = 'PAUSE'; }
   $('wfTitle').textContent = '⚠ 異常が発生しました'; $('winFault').classList.remove('resolved');
   $('wfBody').innerHTML = '<b>LiDAR 途絶</b> ― LiDAR のデータが届いていません。ケーブルと電源を確かめてください。<div class="hint mt">解決すると、この画面が再開の選択肢に変わります。</div>';
   $('wfFoot').innerHTML = '<button class="btn" onclick="hideFault()">非表示</button>';
@@ -1742,7 +1808,7 @@ function hideFault(){ faultHidden = true; closeWin('winFault'); render(); }
 function reshowFault(){ faultHidden = false; openWin('winFault'); render(); }
 function onEstop(){
   if(estop) return;
-  estop = true; if(isRunning()){ S.phase = 'PAUSED'; S.pauseWhy = 'estop'; S.thState = 'PAUSE'; }
+  estop = true; if(isRunning()){ S.from = S.phase; S.phase = 'PAUSED'; S.pauseWhy = 'estop'; S.thState = 'PAUSE'; }
   $('release').classList.add('show'); $('demo').classList.add('shift');
   $('winEstop').classList.remove('resolved'); $('weTitle').textContent = '⚠ 非常停止中';
   $('weBody').innerHTML = '非常停止ボタンが押されました。速度指令をゼロにしています。<div class="hint mt">解除は画面下端の解除バーから。解除すると元のモードの再開を選べます。</div>';
@@ -1778,7 +1844,8 @@ addEventListener('resize', fitStage);
 const q = new URLSearchParams(location.search);   // スクリーンショット用: ?scene=GOAL&pv=portrait&demo=0&win=fault&arm=unknown
 if(q.get('demo')==='0') $('demo').style.display = 'none';
 pv(q.get('pv') || 'auto');
-setArm(q.get('arm') || 'none');
+if(q.get('sim')==='0') simOn = false;   // スクリーンショット用に止める
+setArm(q.get('arm') || 'stowed');
 scene(q.get('scene') || 'SELECT');
 if(q.get('win')==='fault') raiseFault();
 if(q.get('win')==='estop') onEstop();
