@@ -68,6 +68,18 @@ th-system [DetailedDesign-measure.md](../../../../th-system/docs/plan/detailed/D
 
 モックアップの `<script>` は、この純関数と同じ決め方で書いてある（`blueOf`・`bannerOf`・`paintOps` など）。
 
+### 1.4 ビルドと配信
+
+| 項目 | 決まり | 理由 |
+| --- | --- | --- |
+| ビルド | **ホストで** `npm ci && npm run build`（`fk_ws/src/fk_web/`）。`dist/` と `node_modules/` は gitignore | th と同じ（th `start.sh --build` はホストで `npm run build`）。コンテナに Node を入れない |
+| 置き場所 | `fk_ws/src/fk_web/` に `COLCON_IGNORE` を置く | compose が `src` をマウントしているので、ホストで作った `dist/` がコンテナから見える。colcon に `node_modules/` を辿らせない（th は `th_ws/web_ui/` に置くが、マウントを増やさないため `src` の下にする） |
+| 画面の配信（`fk_web_port`） | `fk.launch.py` が `fk_robot` の中で `python3 -m http.server` を `dist/` に向けて起こす | [-auto.md](DetailedDesign-auto.md) §1.1「同じコンテナから静的に配信」（PC の起動と同時に立ち上げる）。標準ライブラリなので足すものが無い（th はホストで `vite preview`） |
+| 本システムの rosbridge（`fk_rosbridge_port`） | `fk.launch.py` が `rosbridge_server` を起こす。Dockerfile に `ros-humble-rosbridge-suite` を足す | th と同じパッケージ |
+| 試験用の起動 | `fk_sim/launch/sim.launch.py`: `auto_runner_sim`（偽の昇降機・偽の ss・測定機構なしで機能側を起こす）・`fake_th`・rosbridge 2 本（th の代わりと本システム）・画面の配信を、**試験用のポート**で（[-names.md](DetailedDesign-names.md) §6）。手で試すときも使う | 本番の `fk.launch.py` は昇降機と ss の口が無く何も送らないので、画面を通して動かすには偽の口つきの起動が要る |
+| 画面の試験のブラウザ | ホストの `@playwright/test`（th と同じ）。初回だけ `npx playwright install chromium` | — |
+| 結合の回し方 | コンテナで試験用の起動を立て（`ROS_DOMAIN_ID` 78）、ホストの Playwright が試験用のポートの画面を開く（`network_mode: host`） | — |
+
 ---
 
 ## 2. シェル（th と同じ）
@@ -89,7 +101,7 @@ th-system [DetailedDesign-measure.md](../../../../th-system/docs/plan/detailed/D
 | 場所 | 中身 |
 | --- | --- |
 | 上（2 列にまたがる） | **手順バー**: ① 配電盤を探す ② 測る配電盤を選ぶ ③ 回って測る ④ 結果（th の `UX-1`） |
-| 左列の上 | 操作バー: **「終了」**（左）・段のピル（右）。**「終了」は操作カードに入れない**（th webui §4） |
+| 左列の上 | 操作バー: **「終了」**（左）・「走行系の画面へ」（**案**。§9 の問い 2。th の S-60 へ移るだけで抜けない）・段のピル（右）。**「終了」は操作カードに入れない**（th webui §4） |
 | 左列 | **配置図**（§5.1）。列の残りの高さいっぱい。下に凡例 |
 | 右列 ① | **次にやること**（th の `.next-action`）。押す操作が無い段は、同じ高さの状態表示にする |
 | 右列 ② | **操作カード**: 停止（左上）・走行（右上）。th の格子のまま。下に状態（太字）と補足 |
@@ -209,14 +221,16 @@ W-2（手押し）・W-3（案内）・W-5（経路ブロック）・W-6（手�
 
 ---
 
-## 8. 名前と型の追加（[-names.md](DetailedDesign-names.md) に入れた）
+## 8. 名前と型の追加（[-names.md](DetailedDesign-names.md) に入れた。**案。この設計の確認と一緒に決める**）
+
+**`fk_msgs` の `AutoState`・`Layout` に欄を足すので、WP-AUTO-04 は画面だけでなく `fk_msgs`・`runner`・`auto_runner` にも手を入れる**（確定した [-auto.md](DetailedDesign-auto.md) の型を広げる。欄を足すだけで、今の欄の意味は変えない）。
 
 | 追加 | 理由 |
 | --- | --- |
 | `Layout.survey_x`・`survey_y` | 見ていない方向の扇の中心（全周を依頼した時点の機体の位置。map フレーム）。今の `Layout` には方位角しか無く、扇を描けない |
 | `AutoState.goal_valid`・`goal_x`・`goal_y`・`goal_yaw` | いま向かっている立ち位置（`meas.goal` に出したもの）。周りの人に止まる場所を見せる |
 | ポート `th_rosbridge_port`（9090）・`th_web_port`（5173） | th の rosbridge と th の画面（[-names.md](DetailedDesign-names.md) §6） |
-| ファイル（`fk_web` 一式・`fk_ws/th_import/web/`・モックアップ・試験用の起動） | [-names.md](DetailedDesign-names.md) §7 |
+| ファイル（`fk_web` 一式・`fk_ws/th_import/web/`・モックアップ・試験用の起動 `sim.launch.py`）・ノード `auto_runner_sim`・試験用のポート | [-names.md](DetailedDesign-names.md) §2・§6・§7 |
 
 `fake_th` が出すもの（`/system/state`・`/route/map_view`）と受けるもの（`/safety/estop_ui`・`/ui/active_screen`）の値は、WP-AUTO-04 のブリーフを書くときに [-names.md](DetailedDesign-names.md) §5.1 へ足す。
 
