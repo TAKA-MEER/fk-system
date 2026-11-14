@@ -246,7 +246,7 @@ th-system では 14 回マージしたのに計画書に反映されたのは 1 
 | `WP-AUTO-04` | 画面 | 03 | 未着手（**設計は案**。2026-11-12 [DetailedDesign-web.md](detailed/DetailedDesign-web.md)・モックアップ。ユーザーの確認待ち） |
 | `WP-AUTO-05` | 昇降機の口 | 01・**hve の実装待ち**（hve の `WP-LIFT-13`・`14` ほか。実機に入ったら hve が知らせる。名前は 2026-11-05 に確かめた。2026-11-11 時点: hve の `WP-LIFT-13` は 2026-11-06 にマージ済み・実機未確認、`WP-LIFT-14` は未着手。[DetailedDesign-open.md](detailed/DetailedDesign-open.md) §1 #1） | 着手できない |
 | `WP-AUTO-06` | ss の口 | 01（ss の型 `ss_msgs` は ss `cf23438` で `main` に入った。2026-11-11 に ss の名前辞書と一致を確かめた。名前と形は 2026-11-05 に確かめた。同 #2） | 未着手（01 待ち） |
-| `WP-AUTO-07` | **測定機構なしの道を外す**（2026-11-14 ユーザー決定。[Spec-auto.md](spec/Spec-auto.md) §7: アームの制御器と通信できないときは何も動かさない。昇降部は「付いていない」を出さなくなった）。詳細設計（[DetailedDesign-auto.md](detailed/DetailedDesign-auto.md) §2.3 ほか・画面の案）とコード・試験を直す。試験で移動だけ回す道は偽の測定機構に替える | 03 | 未着手（詳細設計の直しから） |
+| `WP-AUTO-07` | **測定機構なしの道を、本システムの設定のバイパス（既定でバイパス）で入る形に替える**（2026-11-14 ユーザー決定。[Spec-auto.md](spec/Spec-auto.md) §7: アームの制御器と通信できないときは何も動かさない。ただし搭載までは移動を確かめるためバイパスを既定にする。デモ特例 [EXCEPTION-LEDGER.md](EXCEPTION-LEDGER.md) `W-1`。昇降部は「付いていない」を出さなくなった）。詳細設計（[DetailedDesign-auto.md](detailed/DetailedDesign-auto.md) §2.3 ほか・画面の案）とコード・試験を直し、`WAIVER(demo): W-1` のタグを置く | 03 | 未着手（詳細設計の直しから） |
 
 ## 5. 各段階の確認方法
 
