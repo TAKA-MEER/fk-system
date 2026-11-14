@@ -1,0 +1,1855 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>測定機能の画面 モックアップ</title>
+<style>
+/* ============================================================
+   fk-system 測定機能の画面（自律測定）モックアップ
+   設計の正: docs/plan/detailed/DetailedDesign-web.md
+   外部リソースを一切読み込まない（機体の AP 配下にネットが無いため）。
+
+   ① th の実機の画面の CSS（th th_ws/web_ui/src/shell/theme.css）を、th のコミット a33dd9a
+      （fk_ws/th_ref と同じ）からそのまま写したもの。見た目を th の実機と揃えるため。
+      **写しはこのモックアップだけ。実装は写さず、th_ref のコミットから取り込む**（設計 §1.2）。
+   ② モックアップの操作台（th のモックアップ docs/plan/spec/mockup/index.html の #demo と同じ）。
+   ③「fk: ここから」以降が本システムで足したもの。
+   ============================================================ */
+/* ---------- ① th の theme.css（a33dd9a） ---------- */
+/* ============================================================
+   shell/theme.css — CSS variables and layout skeleton, moved from
+   docs/plan/spec/mockup/index.html (the layout spec's source of truth;
+   see DetailedDesign-webui.md §1 and the file's own header comment).
+
+   Ported as-is except for the mockup-only preview harness (#stage,
+   body.pv-*, #demo*, <template> content), which doesn't exist in the real
+   app. IDs/classes are kept identical to the mockup so the container-query
+   + clamp() rules (DetailedDesign-webui.md §2.3 / SD-2) transfer unchanged.
+   ============================================================ */
+
+:root{
+  --bg:#0f1117; --panel:#1a1d24; --inset:#12141b;
+  --ctrl:#252830; --ctrl-hi:#343849; --ctrl-on:#2c4a74;
+  --bd:#2a2d35; --bd-hi:#3a3f4c;
+  --tx:#e6e8ec; --mut:#8b93a1; --dim:#5c6470;
+  --brand:#3f8ae0; --brand-lt:#7fb4ee; --brand-dk:#12233d;
+  --ok:#4caf50; --ok-tx:#8fd694;
+  --warn:#ffb74d; --warn-tx:#ffcc80;
+  --ng:#ef5350; --ng-tx:#ff9b98;
+  --estop:#c62828; --estop-hi:#e53935;
+  --carry:#7e4fb0; --carry-tx:#c9a6e8;
+  --hdr:96px;
+  --r:8px;
+  /* Base font size. Every font-size is written as calc(var(--fs) * n).
+     Inside #app, the container query below makes this track screen width. */
+  --fs:16px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:#07090d; color:var(--tx); font-size:var(--fs);
+  font-family:system-ui,-apple-system,'Segoe UI',sans-serif;
+  -webkit-tap-highlight-color:transparent; overflow:hidden;
+}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer;touch-action:manipulation}
+table{border-collapse:collapse;width:100%}
+
+/* ================= stage (固定論理キャンバスのレターボックス) =================
+   2026-09-02: 画面サイズで見え方が変わる問題への対策。#app は端末の実寸では
+   なく stageMetrics() が決めた固定サイズ (横長 1280x720 / 縦長 720x1280) で
+   描き、それを --stage-scale で画面いっぱいまで等倍拡大する。
+   余白は黒帯になる。CSS 変数は shell/FixedStage.jsx が実測して流す。
+   theme.css 内に position:fixed の要素は無いので、#app に transform を
+   かけても固定配置の基準がずれる問題は起きない（W-1..W-6 も #app 内の
+   absolute 配置）。 */
+#stage{
+  position:fixed;inset:0;overflow:hidden;background:#000;
+  display:flex;align-items:center;justify-content:center;
+}
+#app{
+  position:relative;display:flex;flex-direction:column;overflow:hidden;
+  background:var(--bg);
+  /* 論理サイズ。FixedStage が未マウントでも壊れないよう既定値を持たせる。 */
+  width:var(--stage-w, 100%);height:var(--stage-h, 100dvh);
+  flex:0 0 auto;
+  transform:scale(var(--stage-scale, 1));transform-origin:center center;
+  /* Layout switches on #app's own width, not viewport width, so the shell
+     is correct even when embedded in something narrower/wider than the
+     viewport. size containment is required to use cqh (container-height
+     units), which caps figure heights against screen height
+     (DetailedDesign-webui.md §2.4). */
+  container-type:size;container-name:app;
+}
+/* DetailedDesign-webui.md §2.3: font size tracks screen width.
+   Container-query units aren't usable on #app itself, so this is applied
+   to its direct children (#hdr / #body / #winGuide / #release / #overlay).
+   420px->16 / 1120px->16 / 1400px->19 / 1920px->22.
+   WS-9X: multiplied by --fs-user (1 / 1.15 / 1.3), the "文字サイズ" choice
+   in S-50 表示タブ. parts/fontScale.js sets it on #app; AppShell restores it
+   on boot. Default 1 keeps the previous behaviour exactly. */
+#app > *{ --fs:calc(clamp(16px, calc(1.1cqi + 3.6px), 22px) * var(--fs-user, 1)); font-size:var(--fs); }
+
+/* ================= header (always on top, never covered) ================= */
+#hdr{
+  flex:0 0 auto;z-index:100;position:relative;
+  background:linear-gradient(180deg,#16283f,#101a29);
+  border-bottom:2px solid var(--brand);
+}
+/* ヘッダの色（SG-C3。shell/limits.js の headerTone()）。Spec-webui.md §8
+   「非常停止＝赤／解除待ち＝紫」、§5「開発モード中はヘッダの色を変える」。
+   開発モードの色は #devPill と同じ系統（spec は色を指定していない）。 */
+#hdr[data-tone="estop"]{background:linear-gradient(180deg,#4a1414,#2a0c0c);border-bottom-color:var(--estop)}
+#hdr[data-tone="carry"]{background:linear-gradient(180deg,#2e1b46,#1c1226);border-bottom-color:var(--carry)}
+#hdr[data-tone="dev"]{background:linear-gradient(180deg,#4a1030,#2a0a1c);border-bottom-color:#8a2a5a}
+/* flex-wrap:nowrap は必須（2026-09-02）。wrap だと、幅が足りなくなったとき
+   #screenName が省略記号で縮む前に行が増え、ヘッダーの高さごと変わってしまう
+   （＝本文の高さが動く。DetailedDesign-webui.md §2.5）。実機では row2 の
+   フォルト文が長いときにこれが起きて「画面名／モードだけ下の行に落ちる」
+   という変形になっていた。nowrap にして、足りない分は #screenName 自身の
+   ellipsis に吸収させる（元々 max-width:559px の分岐だけがこうしていた）。 */
+#hdr .row1{display:flex;align-items:center;gap:8px;padding:7px 10px;flex-wrap:nowrap;min-width:0}
+#logo{height:30px;background:#fff;border-radius:5px;padding:3px 6px;flex:0 0 auto}
+#logo img{height:100%;display:block}
+.proj{font-size:calc(var(--fs) * .66);color:var(--brand-lt);letter-spacing:.02em;line-height:1.25;flex:0 0 auto}
+.proj b{display:block;font-size:calc(var(--fs) * .8);color:#fff;font-weight:700}
+#hdr .spacer{flex:1 1 auto}
+/* DetailedDesign-webui.md §2.5: screen name and mode are the largest text in the header */
+#screenName{font-size:calc(var(--fs) * 1.45);font-weight:800;letter-spacing:.02em;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:0 1 auto;min-width:0}
+#modePill{
+  flex:0 0 auto;font-size:calc(var(--fs) * 1.05);font-weight:800;padding:5px 14px;border-radius:999px;
+  background:#2a3242;border:1px solid #3a4356;white-space:nowrap;
+}
+#modePill.unknown{background:#3a1414;border-color:#8a2a2a;color:var(--ng-tx)}
+#zonePill{
+  flex:0 0 auto;font-size:calc(var(--fs) * .72);font-weight:700;padding:4px 9px;border-radius:999px;
+  background:#3a2a10;border:1px solid #7a5a20;color:var(--warn-tx);white-space:nowrap;display:none;
+}
+#zonePill.show{display:inline-block}
+#devPill{
+  flex:0 0 auto;font-size:calc(var(--fs) * .72);font-weight:700;padding:4px 9px;border-radius:999px;
+  background:#4a1030;border:1px solid #8a2a5a;color:#ffa6d0;display:none;
+}
+#devPill.show{display:inline-block}
+#hdr .row2{display:flex;align-items:stretch;gap:0;border-top:1px solid #23334a}
+#faultBox{
+  flex:1 1 auto;display:flex;align-items:center;gap:8px;padding:7px 12px;
+  background:#151b26;font-size:calc(var(--fs) * .88);min-width:0;
+}
+#faultDot{width:9px;height:9px;border-radius:50%;background:var(--ok);flex:0 0 auto}
+#faultDot.ng{background:var(--ng)}
+#faultDot.warn{background:var(--warn)}
+/* min-width:0 が無いと flex アイテムの既定 (min-width:auto = 内容の最小幅) の
+   ため、ellipsis があっても実際には縮まず、親を押し広げる。 */
+#faultTx{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+#faultBadge{
+  flex:0 0 auto;font-size:calc(var(--fs) * .74);font-weight:700;padding:3px 9px;border-radius:999px;
+  background:#4a1010;border:1px solid #8a2a2a;color:var(--ng-tx);display:none;cursor:pointer;
+}
+#faultBadge.show{display:inline-block}
+/* DetailedDesign-webui.md §2.2 (U-9): height >=72px and >= 4.2x base font,
+   width >=160px and >=25% of screen width; the tallest button on screen */
+#estopBtn{
+  /* 25cqw = 25% of #app's width. vw would ignore an embedding frame and overflow it */
+  flex:0 0 auto;min-width:max(160px,25cqw);min-height:max(72px,calc(var(--fs) * 4.2));
+  background:var(--estop);color:#fff;
+  font-size:calc(var(--fs) * 1.25);font-weight:800;letter-spacing:.14em;padding:12px 20px;
+  border-left:2px solid #7a1414;
+  box-shadow:inset 0 0 0 2px #ff6b6b33;
+}
+#estopBtn:active{background:var(--estop-hi)}
+#estopBtn.engaged{background:var(--carry);border-left-color:#4a2a70}
+/* C-2 (WP-CARRY-01 §4.3): CARRY's own "won't do anything" look -- not
+   `.engaged` (that's reserved for a genuinely accepted press, and would
+   visually claim this one worked; C-06r actually rejects it), not
+   `disabled`/hidden either (the button stays pressable; the safety-path
+   publish to /safety/estop_ui never stops -- AppShell.jsx). A hazard-stripe
+   fill on the same red keeps it recognizable as the estop button while
+   reading as "inert" rather than "off" or "success". */
+#estopBtn.disabled-in-carry{
+  background:repeating-linear-gradient(135deg,var(--estop) 0 10px,#5a1414 10px 20px);
+  cursor:not-allowed;
+}
+#estopBtn.disabled-in-carry:active{
+  background:repeating-linear-gradient(135deg,var(--estop) 0 10px,#5a1414 10px 20px);
+}
+/* On a portrait screen, occupy >=45% of the header's second row */
+#hdr .row2{--estop-w:46%}
+#estopBtn{flex-basis:var(--estop-w,auto)}
+@container app (min-width:760px){
+  #hdr .row2{--estop-w:auto}
+  #faultBox{min-width:190px}
+}
+/* WS-9X: 横長でもヘッダーは 2 段のまま（row1 / row2 を縦に積む）。
+   以前は min-width:1200px で 1 段（row1 | row2 横並び）にしていたが、それだと
+   row2 の取り分が ~42cqw に固定され、フォルト／状態メッセージ（#faultBox）の
+   幅が狭くなる。ユーザー要望（2026-09-04）で、本文高さより「エラーメッセージ
+   のスペース」を優先し、2 段に統一した。
+   2 段なら row2 は常に全幅で、#faultBox が flex:1 1 auto、#estopBtn が
+   min-width:max(160px,25cqw) の右端 = メッセージ領域が最大になる。
+   （2026-09-02 に直した「フォルト文の長さでヘッダーが変形する」不具合は
+   1 段レイアウト特有だったので、2 段に統一したことで原理的に再発しない。） */
+/* On a portrait screen, fold the project name and shorten the zone pill.
+   A header that wraps to 2 lines eats into body height (DetailedDesign-webui.md §2.5) */
+.z-short{display:none}
+@container app (max-width:559px){
+  .proj{display:none}
+  .z-long{display:none}
+  .z-short{display:inline}
+  #hdr .spacer{display:none}
+  /* grow here would push the mode pill onto the next line; only allow shrink */
+  #screenName{flex:0 1 auto}
+  /* keep row1 nowrap: with wrap, the layout adds a line before the screen
+     name shrinks, which grows the header. nowrap forces the screen name's
+     own ellipsis to absorb the missing space instead */
+  #hdr .row1{gap:6px;padding:7px 8px;flex-wrap:nowrap}
+  #modePill,#zonePill,#devPill{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+  #devPill{font-size:calc(var(--fs) * .66);padding:4px 7px}
+  #devPill .d-long{display:none}
+}
+.d-short{display:none}
+@container app (max-width:559px){ .d-short{display:inline} }
+
+/* ================= body (the only scrolling region) ================= */
+/* scrollbar-gutter keeps body width stable across scrollbar appearance, so
+   height:auto figures don't resize themselves just because a scrollbar
+   showed up. */
+#body{flex:1 1 auto;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;
+  scrollbar-gutter:stable}
+.screen{padding:10px}
+@container app (min-width:760px){
+  .screen.two-col{display:grid;grid-template-columns:1.35fr 1fr;gap:10px;align-items:start}
+}
+/* Cap single-column screens' width on wide screens so buttons don't stretch
+   full width (a target that keeps moving is hard to aim at). */
+@container app (min-width:1200px){
+  .screen:not(.two-col){max-width:1100px;margin:0 auto}
+}
+@container app (min-width:1300px){
+  .screen.two-col{grid-template-columns:1.15fr 1.4fr}
+  .screen.two-col > div:last-child{
+    display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:start;
+  }
+  .screen.two-col > div:last-child > .card{margin-bottom:0}
+  /* the operation card always sits top-left (don't move where it's found) */
+  .screen.two-col > div:last-child > .card.ops{grid-column:1}
+}
+/* WS-9X: 横長では S-01 をスクロール無しのハブに、S-50 の各タブを 2 列に
+   (docs/plan/spec/mockup/index.html L168-177 相当。実 DOM は .active クラス無し)。 */
+@container app (min-width:1000px){
+  /* S-01: 左列＝接続確認＋移動、右列＝試験場＋保守・設定＋運用の終了。S-00: 左列＝
+     疎通確認の表、右列＝総合＋自動判定。2 つの列は独立した縦積み（.split-col）なので、
+     片方が伸びても他方の行がずれない（本文 592px に収める）。縦長では .split-col は
+     ただの縦積みで、DOM 順がそのまま上から下の順になる。 */
+  #s01,#s00{display:grid;grid-template-columns:1.25fr 1fr;gap:10px;align-items:start}
+  #s01 .card,#s00 .card{margin-bottom:0}
+  #s01 .split-col,#s00 .split-col{display:flex;flex-direction:column;gap:10px;min-width:0}
+  #s50 .tabpane.on{display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:start}
+  #s50 .tabpane.on > .card{margin-bottom:0}
+  /* 一般タブは区画を 1 つずつ全幅で出す（区画の切替は .s50-sections）。 */
+  #s50 .tabpane.on.s50-general{grid-template-columns:1fr}
+  /* 開発モード: 左＝有効化・現在の状態、右＝項目（ボタン｜説明の行）。 */
+  #s50 .tabpane.on.s50-dev{grid-template-columns:minmax(0,5fr) minmax(0,7fr);grid-template-rows:auto minmax(0,1fr)}
+  #s50 .s50-dev > .card:nth-child(1){grid-column:1;grid-row:1}
+  #s50 .s50-dev > .card:nth-child(2){grid-column:2;grid-row:1 / span 2}
+  #s50 .s50-dev > .s50-dev-stack{grid-column:1;grid-row:2;display:flex;flex-direction:column;gap:10px}
+  #s50 .s50-dev-stack > .card{margin-bottom:0}
+  #s50 .s50-dev-items{grid-template-columns:1fr;gap:6px}
+  #s50 .s50-dev-items > div{display:grid;grid-template-columns:212px 1fr;gap:8px;align-items:center}
+  #s50 .s50-dev-items .btn{padding-top:8px;padding-bottom:8px}
+  #s50 .s50-dev-items > div > .note{margin:0}
+}
+
+/* ---------- generic pieces ---------- */
+.card{background:var(--panel);border:1px solid var(--bd);border-radius:var(--r);padding:10px;margin-bottom:10px}
+.card > h3{font-size:calc(var(--fs) * .76);letter-spacing:.1em;color:var(--mut);font-weight:700;margin-bottom:8px}
+/* WS-3 / demo-teach-replay: 経路プレビュー canvas（S-13/S-14）。
+   canvas 本体は 600x380 論理解像度で fitTransform がデータ bbox に合わせて
+   縦横比を保ってフィットし、CSS はウィンドウ幅に合わせて等比拡縮する。 */
+/* max-height はモックアップの .mapWrap svg{max-height:min(42cqh,300px)} 相当。
+   幅なりに縦へ伸びると操作カードや初期姿勢カードを画面外へ押し出す。canvas は
+   論理 600x380 で描画済みなので object-fit:contain で歪まず内側に収まる。 */
+.route-preview{display:block;width:100%;height:auto;max-height:min(42cqh,300px);
+  object-fit:contain;background:var(--inset);
+  border:1px solid var(--bd);border-radius:var(--r)}
+/* WS-6.4 / demo-teach-replay: 経路プレビューは ロボット中心・固定倍率（半径7m）。
+   canvas は常時マウントし、データが無い間だけオーバレイ文言を重ねる（DOM を差し替えない
+   ので #4 の点滅がさらに減る）。 */
+.routePreview{position:relative}
+/* 縦長（高さに余裕はあるが、S-14 の再生中は経路からのずれのカードが増える）では
+   プレビューを少し低くして本文に収める。横長は S-13/S-14 側が残りの高さで決める。 */
+@container app (max-width:999px){ .route-preview{max-height:min(32cqh,240px)} }
+.routePreviewOverlay{position:absolute;inset:0;display:grid;place-items:center;
+  margin:0;pointer-events:none;color:var(--mut)}
+/* WS-4 / demo-teach-replay: 走行スティック下のキーボード操作の凡例。
+   押下中（kbd.held）は keys を強調表示する（任意実装）。 */
+.kbdHint{display:flex;gap:6px;justify-content:center;align-items:center;
+  font-size:calc(var(--fs) * .6);color:var(--mut);margin-top:8px;line-height:1.5}
+.kbdHint .kbdKeys{padding:1px 8px;border:1px solid var(--bd);border-radius:8px;
+  background:var(--inset);letter-spacing:.05em;color:var(--txt)}
+.kbdHint.on .kbdKeys{background:var(--acc);color:#fff;border-color:var(--acc)}
+.well{background:var(--inset);border:1px solid var(--bd);border-radius:var(--r);padding:10px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.grow{flex:1 1 auto}
+.mut{color:var(--mut)}.dim{color:var(--dim)}
+.sm{font-size:calc(var(--fs) * .82)}.xs{font-size:calc(var(--fs) * .74)}
+.mono{font-family:ui-monospace,'SFMono-Regular',Menlo,monospace;font-variant-numeric:tabular-nums}
+.b{font-weight:700}
+.tone-ok{color:var(--ok-tx)}.tone-ng{color:var(--ng-tx)}.tone-warn{color:var(--warn-tx)}
+.mt{margin-top:8px}.mb{margin-bottom:8px}
+
+.btn{
+  background:var(--ctrl);border:1px solid var(--bd-hi);border-radius:6px;
+  padding:11px 14px;font-size:calc(var(--fs) * .95);font-weight:600;text-align:center;
+}
+.btn:active{background:var(--ctrl-hi)}
+/* Blue = "what's happening now" only (§4.3 / U-17). Never used for emphasis. */
+.btn.on{background:var(--ctrl-on);border-color:var(--brand);color:#fff}
+.btn.primary{background:#245089;border-color:var(--brand)}
+.btn.save{background:#17361d;border-color:#2f7a38;color:#a9e0ad;font-weight:700}
+.btn.save:active{background:#1f4a27}
+.btn.danger{background:#4a1414;border-color:#8a2a2a;color:var(--ng-tx)}
+.btn.wide{width:100%}
+/* S-21 BLOCKED 帯のボタン: タップしやすい大きさ（最小 44px） */
+.s21-blocked .btn{min-height:44px}
+.btn[disabled],.btn.dis{opacity:.4;cursor:not-allowed}
+.btn.sm{padding:7px 10px;font-size:calc(var(--fs) * .84)}
+
+/* Ported from docs/plan/spec/mockup/index.html (not carried over by
+   WP-UI-01, which built no screens yet -- first needed by S-00/S-01,
+   WP-UI-02). A grid of same-size buttons for S-01's mode-selection groups
+   and similar lists. */
+.btnrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(74px,1fr));gap:7px}
+.btnrow.n2{grid-template-columns:1fr 1fr}
+.btnrow.n3{grid-template-columns:repeat(3,1fr)}
+.btnrow.n4{grid-template-columns:repeat(4,1fr)}
+/* Extremely narrow devices: 2 columns wraps text and grows button height,
+   which would break "estop is the tallest button on screen" (U-9). */
+@container app (max-width:400px){ #s01 .btnrow{grid-template-columns:1fr} }
+
+/* Ported from docs/plan/spec/mockup/index.html L222-226. Left out of the
+   original theme.css port because no screen had styled panes yet; S-13's
+   走行/教示 tabs render as bare buttons without this. Screens that place the
+   strip inside .top-actions (S-11/S-13/S-14) null out .tabs' own margin/border
+   inline -- what matters here is .tab / .tab.on. .tabpane visibility is still
+   React conditional rendering; .tabpane{display:none} hides nothing today. */
+.tabs{display:flex;gap:5px;margin-bottom:9px;border-bottom:1px solid var(--bd);flex-wrap:wrap}
+.tab{padding:9px 14px;font-size:calc(var(--fs) * .9);font-weight:600;color:var(--mut);
+  border-bottom:3px solid transparent;border-radius:6px 6px 0 0}
+.tab.on{color:#fff;background:#20242e;border-bottom-color:var(--brand)}
+.tabpane{display:none}.tabpane.on{display:block}
+
+.pill{display:inline-block;font-size:calc(var(--fs) * .72);font-weight:700;padding:2px 8px;border-radius:999px;
+  background:#2a3242;border:1px solid #3a4356}
+.pill.ok{background:#14331a;border-color:#2c6b33;color:var(--ok-tx)}
+.pill.ng{background:#3a1414;border-color:#7a2a2a;color:var(--ng-tx)}
+.pill.warn{background:#3a2a10;border-color:#7a5a20;color:var(--warn-tx)}
+
+/* Ported from the mockup alongside .btnrow above -- S-00's device table. */
+table.lst th,table.lst td{padding:7px 8px;border-bottom:1px solid var(--bd);font-size:calc(var(--fs) * .86);text-align:left}
+table.lst th{color:var(--mut);font-size:calc(var(--fs) * .74);letter-spacing:.06em;font-weight:700}
+table.lst tr.sel td{background:#1f2634}
+table.lst td.r{text-align:right}
+/* S-14 の経路一覧: 行数が増えても地図を下へ押し出さないよう、一覧だけを
+   枠内スクロールにする。cqh は #app（container-type:size）＝画面高に追従。
+   上限に達したあとは経路が何本あっても地図の位置は変わらない。 */
+.lst-scroll{max-height:clamp(96px, 24cqh, 200px);overflow-y:auto}
+
+.hint{background:#122033;border:1px solid #24446e;border-radius:6px;padding:8px 10px;
+  font-size:calc(var(--fs) * .83);color:#b9d4f2;line-height:1.5}
+.note{background:#2a1c0a;border:1px solid #6a4a18;border-radius:6px;padding:8px 10px;
+  font-size:calc(var(--fs) * .83);color:var(--warn-tx);line-height:1.5}
+
+/* ---------- S-20 試験準備（WP-UI-06。screens/S20Prep.jsx） ----------
+   地図 SVG と対象選択レーダー。mockup の .mapWrap svg とデータテンプレート
+   radar の狙い（幅なりに伸びて、操作カードを画面外へ押さない）を踏襲する。
+   max-height はモックアップの .mapWrap svg{max-height:min(42cqh,300px)} 相当。 */
+.screen#s20 .mapWrap svg,.screen#s21 .mapWrap svg{display:block;width:100%;height:auto;max-height:min(42cqh,300px);
+  background:var(--inset);border:1px solid var(--bd);border-radius:var(--r)}
+/* brief-onsite-ux2 F-3: 占有格子ラスタは canvas→toDataURL()→SVG <image> で
+   描いており、S-13/S-14（RoutePreview、canvas 直描き + imageSmoothingEnabled
+   =false）と違って拡大時にブラウザが平滑化しぼやける。ピクセルをくっきり保つ。
+   -webkit-optimize-contrast は pixelated 非対応の古い WebView 向けフォールバック
+   （未対応の値は無視されるだけなので、pixelated を後に書けば対応環境ではそちらが勝つ）。 */
+.screen#s20 image,.screen#s21 image{
+  image-rendering:-webkit-optimize-contrast;
+  image-rendering:pixelated;
+}
+.radar{display:block;width:100%;height:auto;max-height:min(42cqh,300px);
+  background:var(--inset);border:1px solid var(--bd);border-radius:var(--r)}
+.rv-ring{fill:none;stroke:var(--bd);stroke-width:1}
+.rv-axis{stroke:var(--bd);stroke-width:1}
+.rv-msg{fill:var(--mut);font-size:11px;pointer-events:none}
+/* 2026-09-08: 候補があるまま isLost のときに出す非ブロッキングの帯（候補は隠さない）。
+   .rv-msg と違って中心を占有しない（候補のタップを妨げない）ので pointer-events は既定のまま。 */
+.rv-msg-lost{fill:var(--warn);font-size:10px;font-weight:700}
+.rv-cand{cursor:pointer}
+.rv-cand circle{fill:#245089;stroke:#90caf9;stroke-width:1.5}
+.rv-cand.sel circle{fill:#43a047;stroke:#c8e6c9;stroke-width:2}
+.rv-cand text{fill:var(--mut);font-size:10px}
+.rv-cand.sel .rv-sel{fill:#c8e6c9;font-size:11px}
+.rv-cnf{fill:var(--mut);font-size:9px}
+
+/* ---------- S-21 試験（WP-UI-07。screens/S21Test.jsx） ---------- */
+/* mockup #clearBar（退避待ちの進捗バー）: .bar.grow.warn の中の <i> で幅を表す。 */
+.screen#s21 .s21-bar{height:12px;border-radius:999px;overflow:hidden;background:var(--inset);
+  border:1px solid var(--bd-hi);min-width:80px}
+.screen#s21 .s21-bar i{display:block;height:100%;border-radius:999px;background:var(--warn)}
+.screen#s21 .s21-bar.ok i{background:var(--ok-tx)}
+.screen#s21 .s21-bar.nope i{background:var(--ng-tx)}
+
+/* ---------- UX-1: 手順バー（S-20 / S-21 共用。parts/StepBar.jsx） ----------
+   画面本文の一番上（タブ列より上）に横一列で常設。丸番号→ラベル→細線、の並び。
+   done=塗りつぶし＋✓ / current=太枠＋外側リングで大きく / 現在以外の未着手=淡色。
+   ブラウザ極小でラベルを畳んで丸だけにするのは @container 側（Spec-webui.md §1.4
+   「図の高さを頭打ちにする」と同じ考え方。ページ全体を横スクロールさせない）。 */
+.screen.two-col > .stepbar-cell{grid-column:1 / -1;margin-bottom:9px}
+.stepbar{display:flex;align-items:center;list-style:none;margin:0;padding:0}
+.stepbar-step{
+  display:flex;align-items:center;gap:7px;white-space:nowrap;min-width:0;
+}
+.stepbar-link{
+  display:flex;align-items:center;width:min(28px,4cqw);flex:0 0 auto;list-style:none;
+}
+.stepbar-link::before{
+  content:"";display:block;width:100%;height:2px;border-radius:1px;background:var(--bd-hi);
+}
+.stepbar-num{
+  flex:0 0 auto;display:flex;align-items:center;justify-content:center;
+  width:22px;height:22px;border-radius:50%;
+  background:var(--ctrl);border:2px solid var(--bd-hi);color:var(--mut);
+  font-size:calc(var(--fs) * .72);font-weight:700;line-height:1;
+}
+.stepbar-check{width:12px;height:12px}
+.stepbar-step.done .stepbar-num{background:#2c6b33;border-color:#4caf50;color:#e8f5e9}
+.stepbar-step.cur .stepbar-num{
+  width:28px;height:28px;color:#fff;font-size:calc(var(--fs) * .82);
+  background:var(--ctrl-on);border:3px solid var(--brand);
+  box-shadow:0 0 0 3px rgba(63,138,224,.35);
+}
+.stepbar-step.cur .stepbar-label{font-weight:700;color:var(--tx)}
+.stepbar-step:not(.done):not(.cur) .stepbar-num{background:transparent}
+.stepbar-step:not(.done):not(.cur){opacity:.55}
+.stepbar-label{font-size:calc(var(--fs) * .78);color:var(--mut)}
+@container app (max-width:759px){
+  /* 縦長・極小ではラベルを畳んで番号の丸だけにする */
+  .stepbar-step .stepbar-label{display:none}
+  .stepbar-step{gap:4px}
+  .stepbar-step.cur .stepbar-num{width:24px;height:24px}
+  .stepbar-step:not(.cur) .stepbar-num{width:20px;height:20px}
+  .stepbar-link{width:9px}
+}
+
+/* ---------- UX-1: 「次にやること」主ボタン（右列一番上。S-20 / S-21） ----------
+   現在の段の操作を 1 つだけ・他より明らかに大きく出す。押すと必要なタブに
+   自動で切り替わる（タブを探させない）。UX-2 でアイコン（形・色）を付ける。 */
+.next-action{
+  width:100%;margin-bottom:9px;padding:13px 15px;
+  font-size:calc(var(--fs) * 1.02);font-weight:700;text-align:center;
+  background:var(--brand-dk);border:1px solid var(--brand);border-radius:8px;color:#fff;
+}
+.next-action:active{background:var(--ctrl-on)}
+.next-action[disabled]{background:var(--ctrl);opacity:.4;cursor:not-allowed}
+
+/* 手順バーを足したぶん、S-20/S-21 の sticky 操作バーが上方向へ負マージンで
+   はみ出して手順バーに重ならないよう、top 側だけ 0 にする（横方向の全幅は維持）。 */
+.screen#s20 .top-actions.sticky,.screen#s21 .top-actions.sticky{margin:0 -10px 9px}
+
+/* ---------- S-50 設定のパラメータ入力（WS-9X。screens/S50Settings.jsx） ----------
+   数値フィールドを詰めて並べる。指で触れる高さは確保する。 */
+.s50-sections{margin-bottom:9px}
+.s50-dev-stack{display:contents}
+.s50-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px 12px}
+.s50-field{display:flex;flex-direction:column;gap:3px;font-size:calc(var(--fs) * .82)}
+.s50-field-label{color:var(--mut);line-height:1.3}
+.s50-field input{
+  background:var(--inset);border:1px solid var(--bd-hi);border-radius:6px;color:var(--tx);
+  padding:8px 9px;font:inherit;font-variant-numeric:tabular-nums;width:100%;
+}
+.s50-field input:disabled{opacity:.45}
+
+/* ---------- operation bar (screen-local: finish / tabs / status pill) ----------
+   DetailedDesign-webui.md §4: fixed top-left of the body, "finish" lives
+   here only — never in the operation card (a slip there could be mistaken
+   for pause). */
+.top-actions{display:flex;gap:8px;align-items:center;margin-bottom:9px;flex-wrap:wrap}
+.top-actions.sticky{
+  position:sticky;top:0;z-index:5;margin:-10px -10px 9px;padding:10px;
+  background:var(--bg);border-bottom:1px solid var(--bd);
+}
+
+/* ---------- operation card (same position in every screen) ----------
+   DetailedDesign-webui.md §4: stop=top-left / confirm=top-mid / run=top-right
+   / save=bottom-left / manual=bottom-right. Unused buttons are omitted, but
+   the ones that are shown never move. */
+.opsgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
+.op-stop  {grid-column:1;grid-row:1}
+.op-check {grid-column:2;grid-row:1}
+.op-run   {grid-column:3;grid-row:1}
+.op-save  {grid-column:1;grid-row:2}
+.op-manual{grid-column:3;grid-row:2}
+.opsgrid .btn{padding:calc(var(--fs) * .62) 8px}
+/* 操作カードの格子は固定（Spec-webui.md §3.3）。以前は行にボタンが 1 つだけのとき
+   grid-column:1 / -1 で行いっぱいに伸ばしていたが、置くボタンの幅が画面ごとに変わる
+   ので廃止した（SG-C2）。ボタンは常に 3 等分の 1 マスの幅。 */
+.state{margin-top:9px;font-size:calc(var(--fs) * .95);font-weight:700}
+
+@container app (max-width:559px){
+  .screen{padding:7px}
+  .card{padding:8px;margin-bottom:7px}
+  .btn{padding:9px 10px}
+}
+
+/* ================= windows (below the header, above the body) ================= */
+#overlay{
+  position:absolute;left:0;right:0;top:0;bottom:0;z-index:50;
+  pointer-events:none;display:flex;flex-direction:column;
+  /* lets a window taller than the viewport still reach its footer buttons */
+  overflow:auto;
+}
+#overlay .backdrop{position:absolute;inset:0;background:#000a;pointer-events:auto;display:none}
+#overlay.has-modal .backdrop{display:block}
+.win{
+  position:relative;pointer-events:auto;margin:auto;width:min(560px,calc(100% - 24px));
+  background:var(--panel);border:1px solid var(--bd-hi);border-radius:10px;
+  box-shadow:0 18px 60px #000c;display:none;
+  max-height:calc(100% - 24px);flex-direction:column;
+}
+.win.show{display:flex}
+.win > .bodyw{overflow-y:auto}
+.win > header,.win > footer{flex:0 0 auto}
+.win > header{padding:11px 14px;font-weight:700;font-size:calc(var(--fs) * 1);display:flex;gap:8px;align-items:center;
+  border-bottom:1px solid var(--bd)}
+.win > .bodyw{padding:14px;font-size:calc(var(--fs) * .92);line-height:1.6}
+.win > footer{padding:11px 14px;display:flex;gap:8px;justify-content:flex-end;
+  border-top:1px solid var(--bd);flex-wrap:wrap}
+.win.fault > header{background:#3a1414;color:var(--ng-tx)}
+.win.resolved > header{background:#14331a;color:var(--ok-tx)}
+.win.carry > header{background:#2e1b46;color:var(--carry-tx)}
+.win.blocked > header{background:#2a1c0a;color:var(--warn-tx)}
+.win.confirm > header{background:#1f2634}
+
+/* W-3 guide window: a one-line band inserted below the body. An absolutely
+   positioned overlay would cover the jog panel / release bar and make them
+   unreachable; a band only shrinks the body (DetailedDesign-webui.md §6.1). */
+#winGuide{
+  flex:0 0 auto;display:none;z-index:50;position:relative;
+  background:#122033;border-top:2px solid var(--brand);padding:10px 12px;
+}
+#winGuide.show{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+#winGuide .g-tx{flex:1 1 220px;font-size:calc(var(--fs) * .88);line-height:1.5;color:#cfe3fa}
+
+/* ---------- W-6 manual-operation panel ----------
+   Only shown on screens that can't keep the virtual stick on screen
+   permanently. Floats above everything else without moving the body's
+   layout at all (a band would re-flow the two-column layout, shrinking the
+   map too — DetailedDesign-webui.md §6.3). Bottom-left: on S-11/S-13/S-14 the
+   left column is text/operations (not a map), so there is no structural
+   overlap there. S-20/S-21 are the exception — their LEFT column is the map
+   tab, so the same bottom-left float covers it (brief-onsite-ux2 F-7, real
+   実機 report). See the S-20/S-21 override below (案A: dock right, capped to
+   the right column's width instead). */
+#jogWin{
+  position:absolute;display:none;z-index:60;
+  left:10px;bottom:calc(var(--dock-h, 0px) + 10px);
+  width:min(440px, calc(100cqw - 20px));max-height:46cqh;
+  background:var(--panel);border:1px solid #2c7a55;border-radius:10px;
+  box-shadow:0 18px 60px #000c;padding:10px 12px;
+}
+#jogWin.show{display:block}
+#jogWin .jw-hd{display:flex;align-items:center;gap:10px;flex-wrap:nowrap}
+#jogWin .jw-t{font-weight:700;font-size:calc(var(--fs) * .92);color:#8fe0bb;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+#jogWin .jw-m{font-size:calc(var(--fs) * .8);color:var(--mut);margin:2px 0 4px}
+#jogWin .jw-s{display:flex;gap:12px;flex-wrap:wrap;font-size:calc(var(--fs) * .78);font-weight:700;margin:0 0 8px}
+#jogWin .jw-s .warn-tx{color:var(--warn-tx)}
+/* W-6's stick is the same component as the perpetual one, but capped a
+   little lower so the panel fits the floating card (mockup L363). */
+#jogWin .stick svg{max-height:min(30cqh,210px)}
+/* On a portrait screen, pad the body by the panel's height so the operation
+   card can still be scrolled above it. Padding only — nothing already on
+   screen moves. */
+#body.jog-pad{padding-bottom:var(--jog-h, 0px)}
+
+/* brief-onsite-ux2 F-7 (案A): S-20/S-21 だけ、W-6 を右列の幅に収めて右下へ
+   寄せる（左列＝地図の上に出さない）。#jogWin は #body の外（#app 直下の
+   Windows.jsx 出力）に在るため .screen 側のセレクタでは届かない。AppShell.jsx
+   が #app に付けた data-screen（'S-20'/'S-21'）でスコープする。
+   S-11/S-13/S-14 は無変更（e2e/w6-does-not-move-body.spec.js が緑のまま）。
+   right column の幅比は .screen.two-col の grid-template-columns（760px〜
+   1299px: 1.35fr:1fr ≒ 右列 42.6%、1300px 以上: 1.15fr:1.4fr ≒ 右列 54.9%）
+   のうち小さい方（42.6%）を基準に、余裕を持たせて 38cqw を上限にした
+   （実測 1280×720 で地図 SVG と重ならないことを screenshot + bounding-box で確認）。
+   2026-09-13: 縦長 STAGE_PORTRAIT を 9:16(720幅)から 3:4(960幅)に変えたことで
+   .screen.two-col の 760px ブレークポイントを縦長でも常に満たすようになった
+   （#app の論理幅は横長 1280 / 縦長 960 の定数で、どちらも 760 以上）。かつて
+   ここに置いていた「@container app (min-width:760px) でのみ効かせる」ガードは
+   縦長の 720 幅（旧値）で 38cqw が 253.6px しか無く .stickBox の固定幅の兄弟
+   （.spd 84px / .slider 30px）に .stick（flex:1 1 auto）が押し潰される事故を
+   避けるためのものだったが、根本原因は .stick に min-width が無いことだった
+   （下の .stick 定義で min-width:160px を追加済み）。そちらで直っているので
+   このガードは常に真になるだけの死んだ条件になり、撤去した。 */
+#app[data-screen="S-20"] #jogWin,
+#app[data-screen="S-21"] #jogWin{
+  left:auto;right:10px;
+  width:min(400px, calc(38cqw - 20px));
+}
+
+/* ---------- virtual stick (WP-UI-03) ----------
+   Ported from docs/plan/spec/mockup/index.html L292-305 (#tplStick's .stickBox
+   and the .stick svg style) plus the internal guide/dead/knob/hint classes
+   the mockup drew with inline SVG attributes but the React component renders
+   via classes. Values kept identical so the layout spec's measured sizing
+   (DetailedDesign-webui.md §1: don't rewrite the CSS) transfers unchanged. */
+/* WS-5 / demo-teach-replay: 走行画面ではスティックのカードをヘッダ（非常停止ボタン）
+   から離す。手動走行中にスティックへ手を伸ばすと画面上端の非常停止に当たりやすい、
+   という実機フィードバックへの緩和。操作カードは動かさない（.card.ops は据え置き）。 */
+.screen#s11 > div:last-child > .card:not(.ops),
+.screen#s13 > div:last-child > .card:not(.ops),
+.screen#s14 > div:last-child > .card:not(.ops){margin-top:clamp(16px, 6vh, 64px)}
+
+/* .stick は flex:1 1 auto で伸縮するが、既定の min-width:auto は中身（SVG
+   width:100%）が min-content の下限を作らないためほぼ 0 まで潰れうる
+   （S-20/S-21 の右列幅キャップ・38cqw が縦長にも効くようになった 2026-09-13
+   の変更で、.spd 84px / .slider 30px の固定幅兄弟が縮まないぶんを .stick
+   だけが吸収し実機タブレットでパッドが実質消える形で発覚）。min-width で
+   下限を明示し、収まらないときは flex-wrap で SpeedPreset/キーボード凡例を
+   次の行へ折り返す（パッドを潰す代わりに縦へ伸びる。縦長は元々この余白がある
+   — WS-9AM で 1280×720 と 768×1024 の両方を固定）。 */
+.stickBox{display:flex;flex-wrap:wrap;gap:10px;align-items:stretch}
+.stick{flex:1 1 auto;min-width:160px;position:relative;background:var(--inset);border:1px solid var(--bd);border-radius:var(--r);
+  touch-action:none;user-select:none;overflow:hidden}
+.stick svg{display:block;width:100%;height:auto;max-height:min(32cqh,260px)}
+/* `off` (e.g. a stale link) greys the pad so the operator sees the stick is
+   inert without anything visually claiming it is live (display-only courtesy,
+   WP-UI-03 §6.2 -- the authority is jog_gate). */
+.stick.off{opacity:.45;pointer-events:none}
+.stick.act{border-color:var(--brand);box-shadow:0 0 0 2px #24446e inset}
+.stick-guide{fill:none;stroke:#39404f;stroke-width:1.4}
+.stick-plate{fill:#1b1f28;stroke:#333a48}
+.stick-dead{fill:#2b3140;stroke:#4a5266}
+.stick-hint{fill:#7c8595;font-size:12px}
+.stick-knob{fill:#2b3140;stroke:#4a5266;transition:all .12s}
+.stick-knob.active{fill:var(--brand);stroke:var(--brand-lt)}
+.spd{display:flex;flex-direction:column;gap:6px;justify-content:center;flex:0 0 84px}
+.slider{flex:0 0 30px;display:flex;align-items:center;justify-content:center}
+.slider input{writing-mode:vertical-lr;direction:rtl;height:110px;accent-color:var(--brand)}
+.jogBadge{
+  position:absolute;left:8px;top:8px;font-size:calc(var(--fs) * .74);font-weight:700;
+  padding:3px 9px;border-radius:999px;
+  background:#123a2a;border:1px solid #2c7a55;color:#8fe0bb;display:none;z-index:2;
+}
+.stick.act .jogBadge{display:block}
+
+/* Bottom-to-top stacking order. The release bar never moves from the very
+   bottom (DetailedDesign-webui.md §2.1). */
+#hdr{order:0} #body{order:1} #winGuide{order:2} #release{order:3}
+/* 1b-11 (Spec-webui.md §4.2): S-20/S-21 では W-3 の帯を地図の上端（本文の直上）に
+   細く出す。下端のままだと解除バーや W-6 と並び、地図と登録ボタンを避けた位置に
+   ならない。帯の中身・寿命は変えず、並び順と区切り線の辺だけ替える。 */
+#app[data-screen="S-20"] #body, #app[data-screen="S-21"] #body{order:2}
+#app[data-screen="S-20"] #winGuide, #app[data-screen="S-21"] #winGuide{
+  order:1;padding-top:4px;padding-bottom:4px;border-top:0;border-bottom:2px solid var(--brand);
+}
+
+/* ---------- estop release bar (fixed to the bottom, away from the estop button) ----------
+   z-index:70 — above #overlay's windows (50) and W-6 (60), below the header
+   (100). SD-3「非常停止はどんなときでも動作し、何にも覆われない」: W-1 は
+   非常停止のたびに必ず開き、その .backdrop が下端まで覆う。40 のままだと
+   解除バーがその暗幕に沈んでタップが吸われ、解除できない（W-1 の文言自体が
+   「解除は画面下端の解除バーから」と案内しているのに）。モックアップの
+   #overlay(900) < #release(950) の順序に相当（DetailedDesign-webui.md §2.1）。 */
+#release{
+  flex:0 0 auto;display:none;background:#1c1226;border-top:2px solid var(--carry);
+  padding:9px 12px;z-index:70;position:relative;
+}
+#release.show{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+#release .rt{flex:1 1 200px;font-size:calc(var(--fs) * .85);color:var(--carry-tx)}
+#releaseBtn{background:#3d2160;border:1px solid var(--carry);border-radius:6px;padding:9px 16px;
+  font-weight:700;color:#e2ccf7}
+
+/* WS-9R (2026-09-04): 止まっている理由の帯。速度上限が 0 の間だけ出る。
+   黙って止まると操作者に理由が分からない（実機「謎の一時停止」）。
+   本文を押し下げないよう #app 内の absolute で重ねる。押し下げると操作者の指の
+   下でボタンが動くうえ、e2e/header-geometry-stable.spec.js（本文の開始位置が
+   変わらないこと）が落ちる。#app は position:relative。 */
+.stop-banner{
+  position:absolute;left:8px;right:8px;bottom:6px;z-index:60;
+  background:#3a1414;border:1px solid #8a3030;border-radius:6px;
+  padding:5px 10px;color:#ffd7d7;font-size:calc(var(--fs) * .8);line-height:1.35;
+  box-shadow:0 2px 10px rgba(0,0,0,.5);pointer-events:none;
+  /* 1 行に収める。隠す面積を最小にするため（実機「一部表示を隠してしまう」）。 */
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+
+/* ================= UX-2: ボタンの形とアイコン（brief-onsite-ux UX-2-a） ==============
+   識別を色だけにしない。形（塗りつぶし/枠線、停止は丸太枠）とアイコン、ラベルの
+   組み合わせで区別し、ラベルはテキストで読ませる（アイコンは aria-hidden）。
+   parts/icons.jsx の OP_BUTTON_KINDS とクラス名を同期させる（unit で固定）。 */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.ic{flex:0 0 auto}
+
+/* 進む・移動: 塗りつぶし・青 + 右向き矢印 */
+.btn-advance{background:#245089;border-color:#3a6cb0}
+.btn-advance:active{background:#2d5f9e}
+/* 停止: 塗りつぶし・赤。丸太枠（border-radius:999px + 4px 縁）で他と別の形に
+   する。青（.on）と重なっても赤が勝つよう併記する。 */
+.btn-stop{background:#7a1010;border:4px solid #d84343;border-radius:999px;font-weight:800}
+.btn-stop:active{background:#9c1a1a}
+.btn-stop.btn.on{background:#a11e1e}
+/* 登録・宣言: 枠線・水色 + ピン */
+.btn-register{background:transparent;border:2px solid #64b5f6;color:#90caf9}
+.btn-register:active{background:#16304a}
+/* 手動: 枠線・灰 + ジョイスティック */
+.btn-manual-op{background:transparent;border:2px solid #8a94a6;color:#c3ccd9}
+.btn-manual-op:active{background:#2a2f3a}
+/* 保存: 枠線・緑 + フロッピー（既存 .btn.save の塗りつぶしを上書き） */
+.btn.btn-save-op{background:transparent;border:2px solid #4caf50;color:#a9e0ad}
+.btn.btn-save-op:active{background:#173d1e}
+
+/* 手動ボタン＋理由バッジのセル。op-manual は「右列の操作カード左下のジョグ」
+   として配置を記憶されている（DetailedDesign-webui.md §4）ので、セルごと
+   元と同じ grid-column/row に置く。 */
+.opsgrid > .manual-cell{grid-column:3;grid-row:2;display:flex;flex-direction:column;gap:4px;min-width:0}
+.opsgrid > .manual-cell .op-manual{width:100%}
+
+/* UX-2-b: 押せないボタンの直下の理由バッジ */
+.reason-badge{
+  display:block;font-size:calc(var(--fs) * .68);font-weight:600;line-height:1.3;
+  color:var(--ng-tx);background:#3a1414;border:1px solid #7a2a2a;border-radius:6px;
+  padding:3px 6px;text-align:center;
+}
+/* 見出しの横に 1 行で置く理由（高さを増やさない。S-21 行き先タブ） */
+.reason-badge.reason-inline{display:inline-block;margin-left:10px;vertical-align:middle}
+
+/* ---------- 操作カードの色（Spec-webui.md §3.3.1 / U-17。SG-C2） ----------
+   青（塗り）= いまの状態（1 つだけ）／緑（塗り）= 保存／赤（塗り）= 次に押す停止／
+   白い太枠＋面 = 次に押す走行／面＋枠 = 押せるがそれ以外。背景透明の枠のみは使わない。
+   どのクラスが付くかは shell/limits.js の opButtonTone() が決める（表は unit で固定）。
+   上の UX-2 の .btn-* は形（丸太枠・アイコン）のためだけに残し、色はここで上書きする。
+   青は状態表示専用なので、強調のために使わない。 */
+.opsgrid .btn.tone-face{background:var(--ctrl);border:2px solid var(--bd-hi);color:var(--tx)}
+.opsgrid .btn.tone-face:active{background:var(--ctrl-hi)}
+/* 次に押す「停止」= 赤（塗り）。青が走行／確認のときだけ付く */
+.opsgrid .btn.tone-next-stop{background:#a11e1e;border-color:#ff6b68;color:#fff}
+.opsgrid .btn.tone-next-stop:active{background:#c42828}
+/* 次に押す「走行」= 白い太枠＋面。青が停止のときだけ付く */
+.opsgrid .btn.tone-next-run{background:var(--ctrl-hi);border:4px solid var(--tx);color:#fff;font-weight:800}
+.opsgrid .btn.tone-next-run:active{background:var(--ctrl)}
+.opsgrid .btn.tone-current{background:var(--ctrl-on);border:2px solid var(--brand);color:#fff}
+.opsgrid .btn.tone-confirm{background:#17361d;border:2px solid #2f7a38;color:#a9e0ad;font-weight:700}
+.opsgrid .btn.tone-confirm:active{background:#1f4a27}
+/* 押せないボタンは面を消して破線枠にする（押せるボタンと形で見分ける。opacity だけに頼らない）。
+   青（いまの状態）は無効でも状態表示なので青のまま */
+.opsgrid .btn.btn[disabled]:not(.tone-current){background:transparent;border-style:dashed;border-color:var(--bd-hi);color:var(--mut);font-weight:600}
+/* 停止の丸太枠（形で区別する。色だけにしない）は残す */
+.opsgrid .btn.op-stop{border-width:4px;border-radius:999px;font-weight:800}
+
+/* UX-1 の「次にやること」主ボタンにも形の種別を載せる（アイコン＋塗り分け）。
+   進む=塗りつぶし青（既定）、登録=枠線水色、保存=枠線緑、停止=塗りつぶし赤・丸。 */
+.next-action{display:flex;align-items:center;justify-content:center;gap:8px}
+.next-action.btn-register{background:transparent;border-color:#64b5f6;color:#90caf9}
+.next-action.btn-save-op{background:transparent;border-color:#4caf50;color:#a9e0ad}
+.next-action.btn-stop{background:#7a1010;border-color:#d84343;border-radius:999px}
+
+/* brief-onsite-ux2 F-1: 終了は S-11/S-13/S-14 と同じ左上の .top-actions.sticky
+   に統一する（.finish-row による右下配置は誤りだったので廃止）。右列を伸ばす
+   flex 設定は .subtabs の flex:1（UX-5、下の方の定義）を効かせるために残す。 */
+.screen#s20.two-col,.screen#s21.two-col{align-items:stretch}
+.screen#s20.two-col > div:last-child,
+.screen#s21.two-col > div:last-child{display:flex;flex-direction:column;align-items:stretch;min-width:0}
+.btn-finish{background:transparent;border-color:var(--bd-hi);color:var(--mut)}
+
+/* UX-3: 手順バー・次操作ボタンが同じことを伝えるレーダー横のヒントは削った
+   （本文を詰める。引き算の範疇なので CSS は無い）。 */
+
+/* ---------- UX-5: S-20 / S-21 を #body（唯一のスクロール領域）の高さに収める ----------
+   旧来は min-height:100%（下限のみ・上限なし）だったため、右列（準備カード＋
+   ピン一覧＋行き先ボタン等）の中身が伸びると画面外までそのままはみ出していた。
+   S-21 実測: 空 799px / 中身多め 932px。S-20 も「ピン 6・候補 4」で実測すると
+   728px（#body は 590px）まで伸び、同じ原因で落ちる（旧テストは pins:6 でも
+   candidates が少ない組み合わせでしかこの経路を踏んでおらず見逃していた）。
+   height:100%（min-height ではなく上限を持つ height）を .screen#s20/#s21 に通し、
+   二列レイアウトの行を grid-template-rows: auto minmax(0,1fr) にして「本文行」の
+   高さを頭打ちにする。grid/flex の子は既定で内容ぶんの min-height を持つため、
+   min-height:0 を経路（列 → .subtabs / 左列 → .tabpane.on）すべてに通さないと
+   縮まず、結局はみ出す。溢れる分は .tabpane.on だけを overflow-y:auto にして
+   区画内へ吸収する（#body 自体はスクロールしない＝要件どおり）。 */
+.screen#s20,.screen#s21{height:100%;min-height:0}
+.screen#s20.two-col,.screen#s21.two-col{grid-template-rows:auto minmax(0,1fr)}
+.screen#s20.two-col > div,.screen#s21.two-col > div{min-height:0}
+.screen#s20.two-col > div.left-col,.screen#s21.two-col > div.left-col{display:flex;flex-direction:column}
+.screen#s20.two-col > div.left-col .tabpane.on,.screen#s21.two-col > div.left-col .tabpane.on{
+  flex:1 1 auto;min-height:0;overflow-y:auto}
+.screen#s20 .subtabs,.screen#s21 .subtabs{display:flex;flex-direction:column;flex:1 1 auto;min-height:0}
+.screen#s20 .subtabs .tabpane.on,.screen#s21 .subtabs .tabpane.on{flex:1 1 auto;min-height:0;overflow-y:auto}
+
+/* ---------- 横長で S-13 / S-14 を #body の高さに収める（2026-10-10） ----------
+   S-20/S-21 と同じ考え方（上の UX-5）。.screen に上限つきの height を通し、
+   左列の中で「経路プレビュー」だけが残りの高さを埋める（flex:1・下限 120px）。
+   プレビューは canvas を絶対配置で枠いっぱいに置き、object-fit:contain で
+   縦横比を保つので、枠が低くなっても歪まない。S-14 は左列の本文が多いので
+   .pane-grid で 2 列（経路選択＋地図 | 状態の各カード）に割る。縦長は従来どおり
+   縦積み（.pane-grid は横長のときだけ grid）。 */
+@container app (min-width:1000px){
+  .screen#s13,.screen#s14{height:100%;min-height:0}
+  .screen#s13.two-col,.screen#s14.two-col{grid-template-rows:minmax(0,1fr);align-items:stretch}
+  .screen#s13.two-col > div,.screen#s14.two-col > div{min-height:0}
+  .screen#s13 .left-col,.screen#s14 .left-col{display:flex;flex-direction:column}
+  .screen#s13 .left-col .tabpane.on,.screen#s14 .left-col .tabpane.on{flex:1 1 auto;min-height:0}
+  .screen#s13 .left-col .tabpane.on.pane-grid,
+  .screen#s14 .left-col .tabpane.on.pane-grid{display:grid;grid-template-columns:1fr 1fr;
+    grid-template-rows:minmax(0,1fr);gap:10px}
+  /* 地図を大きく: S-13 は左＝記録の文言・数値、右＝地図。S-14 は経路選択を畳んだ後
+     （.map-first）は左＝地図を広く。 */
+  .screen#s13 .left-col .tabpane.on.pane-grid{grid-template-columns:minmax(0,5fr) minmax(0,6fr)}
+  .screen#s14 .left-col .tabpane.on.pane-grid.map-first{grid-template-columns:minmax(0,3fr) minmax(0,2fr)}
+  .pane-col{display:flex;flex-direction:column;min-height:0;min-width:0}
+  .pane-col > .card,.screen#s13 .tabpane > .card{flex:none}
+  /* S-13 の既存経路の一覧は、地図（経路プレビュー）の下限 120px を残すため低めに。 */
+  .screen#s13 .lst-scroll{max-height:clamp(96px,18cqh,130px)}
+  .screen#s13 .routePreview,.screen#s14 .routePreview{flex:1 1 120px;min-height:120px;margin-bottom:10px}
+  .screen#s13 .routePreview canvas,.screen#s14 .routePreview canvas{
+    position:absolute;inset:0;width:100%;height:100%;max-height:none}
+}
+
+/* S-14 の再生速度は 3 つ横並び（カード内の縦積み 3 段は高さを食うだけ）。 */
+.screen#s14 .pane-col .spd{flex-direction:row;flex:none}
+.screen#s14 .pane-col .spd .btn{flex:1 1 0}
+
+/* UX-7: S-21 の右列で、手順の中身（.tabpane）に高さを回すための引き算。
+   - 準備カードの「会場地図を開く」「宣言する」を 1 行に並べる（2 行 → 1 行）
+   - 状態表示と「地図の更新 OFF」の印を 1 行に並べる（2 行 → 1 行）
+   どちらも操作は減らさず、縦だけを詰める。狭いときは折り返して重ならないようにする。 */
+.screen#s21 .s21-prep-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.screen#s21 .s21-prep-row .grow{flex:1 1 auto;min-width:0}
+.screen#s21 .s21-state-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:9px}
+.screen#s21 .s21-state-row .state{margin-top:0;min-width:0}
+.screen#s21 .s21-state-row .s21-map-update-note{flex:1 1 100%;margin:0}
+.screen#s21 .s21-state-row button.pill{font-family:inherit;line-height:inherit;color:inherit;margin:0;cursor:pointer}
+
+/* 横長の S-21: 右列の縦を詰めて「行き先」タブを（ピン未登録の既定状態で）スクロール
+   無しに収める（2026-10-10。空のとき 65px 溢れていた）。
+   - 右列を格子にして、主ボタン（次にやること）と状態行を同じ行に並べる。
+     最後の行（手順タブ）だけが残りの高さを取る。ボタンの位置（操作カードの格子）は動かさない。
+   - 手順バーと左右列の間・タブ見出しの余白を詰める。 */
+@container app (min-width:1000px){
+  .screen#s21.two-col > div:last-child{display:grid;
+    grid-template-columns:minmax(0,36fr) minmax(0,64fr);grid-template-rows:auto auto auto minmax(0,1fr);
+    column-gap:10px;row-gap:0;align-content:start}
+  .screen#s21.two-col > div:last-child > .next-action{grid-column:1;grid-row:1}
+  .screen#s21.two-col > div:last-child > .s21-state-row{grid-column:2;grid-row:1;margin-top:0;
+    flex-wrap:wrap}
+  .screen#s21.two-col > div:last-child > .card.ops{grid-column:1 / -1;grid-row:2}
+  .screen#s21.two-col > div:last-child > .s21-blocked{grid-column:1 / -1;grid-row:3}
+  .screen#s21.two-col > div:last-child > .subtabs{grid-column:1 / -1;grid-row:4;min-height:0}
+  .screen#s21.two-col > .stepbar-cell{margin-bottom:0}
+  .screen#s21 .subtabs > .tabs{margin-bottom:5px}
+  .screen#s21 .subtabs > .tabs .tab{padding-top:7px;padding-bottom:7px}
+  .screen#s21 .subtabs .card{padding:8px 10px;margin-bottom:8px}
+  .screen#s21 .subtabs .card > h3{margin-bottom:5px}
+  .screen#s21 .opsgrid .btn{padding-top:calc(var(--fs) * .45);padding-bottom:calc(var(--fs) * .45)}
+  .screen#s21 .next-action{padding-top:calc(var(--fs) * .5);padding-bottom:calc(var(--fs) * .5);margin-bottom:8px}
+  .screen#s21 .subtabs .btn{padding-top:calc(var(--fs) * .5);padding-bottom:calc(var(--fs) * .5)}
+  .screen#s21 .subtabs .btn.sm{padding-top:5px;padding-bottom:5px}
+  .screen#s21 .subtabs .mb{margin-bottom:5px}
+  /* 行き先を選べない間（帯が加わる一時停止中を含む）は、行き先タブが溢れないようピン一覧の上限を詰める */
+  .screen#s21 .subtabs .pin-list.pin-list-short{max-height:clamp(36px, 6cqh, 200px)}
+}
+
+/* ピン一覧（S-20 ピンタブ・S-21 行き先）は 2 列。1 行 1 ピンの縦積みだと
+   6 本で枠（上限 24cqh）を超えて枠内スクロールになる。2 列にして 3 行に収める。
+   行の中身（名前・向き・ボタン）はそのまま、両端に寄せて並べる。 */
+@container app (min-width:760px){
+  .pin-list table.lst,.pin-list table.lst tbody{display:block}
+  .pin-list table.lst tbody{display:grid;grid-template-columns:1fr 1fr;column-gap:14px}
+  .pin-list table.lst tr{display:flex;align-items:center;gap:8px;min-width:0}
+  .pin-list table.lst td{border-bottom:none;padding:2px}
+  .pin-list table.lst tr{border-bottom:1px solid var(--bd)}
+  .pin-list table.lst td:first-child{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+}
+
+/* LiDAR 死角の図（S-30 の LiDAR 点検）。幅なりに最大 420px。 */
+.scan-mask-svg{width:100%;max-width:420px}
+
+/* 横長の S-40 LiDAR 死角: 図（420px 四方）を縦に積むと右列のカードが本文を 213px 超える。
+   図を左、説明・一覧・ボタンを右に並べる（図は 270px まで。扇形の指定には足りる）。 */
+@container app (min-width:1000px){
+  .s40-blind{display:grid;grid-template-columns:minmax(0,270px) minmax(0,1fr);column-gap:12px;align-items:start}
+  .s40-blind > :first-child{grid-column:1 / -1}
+  .s40-blind > .s40-blind-svg{grid-column:1;grid-row:2 / span 8}
+  .s40-blind > :not(.s40-blind-svg):not(:first-child){grid-column:2}
+}
+
+/* 横長の S-30（モーター確認）: 4 方向ボタンと車輪速の図を少し詰めて、右列のカードを
+   本文の高さに収める（33px 溢れていた）。 */
+@container app (min-width:1000px){
+  #s30 .hold-btn{min-height:48px}
+  #s30 .hold-grid{margin:6px 0;gap:6px}
+  #s30 .wheel-speed-svg{max-width:300px}
+  #s30 .scan-mask-svg{max-width:min(420px,44cqh)}
+}
+
+/* 横長の S-20 も同じ詰め方（登録タブが 57px 溢れていた）。状態ラベルは行を取らず、
+   手順タブの行の右の空きに重ねる（タブは左に寄っていて右半分は空いている。
+   ラベルは pointer-events:none でタブを邪魔しない）。 */
+@container app (min-width:1000px){
+  .screen#s20.two-col > div:last-child > .state{
+    position:relative;z-index:1;pointer-events:none;margin:0 0 -44px;height:44px;
+    display:flex;align-items:center;justify-content:flex-end;padding-right:8px}
+  .screen#s20.two-col > .stepbar-cell{margin-bottom:0}
+  .screen#s20 .subtabs > .tabs{margin-bottom:5px}
+  .screen#s20 .subtabs > .tabs .tab{padding-top:7px;padding-bottom:7px}
+  .screen#s20 .subtabs .card{padding:8px 10px;margin-bottom:8px}
+  .screen#s20 .subtabs .card > h3{margin-bottom:5px}
+  .screen#s20 .opsgrid .btn{padding-top:calc(var(--fs) * .45);padding-bottom:calc(var(--fs) * .45)}
+}
+
+/* ---------- S-30 始業点検（WP-UI-08。screens/S30Opcheck.jsx） ---------- */
+/* 一覧の行（4項目）。押せる行は clickable、実行中は強調。 */
+.s30-row{display:flex;align-items:center;gap:8px;padding:8px 4px;border-bottom:1px solid var(--bd);
+  width:100%;text-align:left;background:none}
+.s30-row:last-child{border-bottom:none}
+.s30-row:not([disabled]):active{background:var(--ctrl-hi)}
+.s30-row.running{background:#1f2634}
+.s30-row .s30-row-label{flex:1 1 auto}
+
+/* ホールドボタン（4方向）。押している間 .on になる（.btn.on と同じ青）。 */
+.hold-btn{min-height:56px}
+.hold-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}
+
+/* ESTOP の手順表示（Step 1〜4）。 */
+.s30-step{background:var(--panel);border:1px solid var(--bd);border-radius:var(--r);padding:12px;
+  text-align:center}
+.s30-step .s30-step-msg{font-size:calc(var(--fs) * 1.05);font-weight:700;margin-bottom:10px}
+.s30-step .s30-step-sub{color:var(--mut);font-size:calc(var(--fs) * .84);margin-bottom:10px}
+.s30-answer-row{display:flex;gap:10px;justify-content:center}
+.s30-answer-row .btn{min-width:88px}
+
+/* 判定結果カード（最終）。 */
+.s30-verdict{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+/* 判定の根拠。横長でも最大 6 行が収まるよう行間を詰める（スクロール無し）。
+   基準を外れた行（.bad）は太字にし、測定値の pill を判定のトーンで塗る。 */
+.s30-basis{margin-bottom:8px}
+.s30-basis h4{margin:0 0 4px}
+.s30-basis-table{width:100%;border-collapse:collapse;font-size:calc(var(--fs) * .82)}
+.s30-basis-table th{color:var(--mut);font-weight:400;text-align:left;padding:2px 6px}
+.s30-basis-table td{padding:2px 6px;border-top:1px solid var(--bd)}
+.s30-basis-table tr.bad td{font-weight:700}
+
+/* ---------- WheelSpeedView（parts/WheelSpeedView.jsx）----------
+   Ported from the pre-refactor App.css (commit aa5a5b5) as-is; only the
+   selectors moved (App.css defined these globally, this file scopes
+   nothing extra since the class names are already unique). */
+.wheel-speed-wrap{display:flex;flex-direction:column;gap:8px}
+.wheel-speed-svg{display:block;width:100%;max-width:340px;aspect-ratio:340/170;margin:0 auto;
+  background:#12141b;border:1px solid #2a2d35;border-radius:8px}
+.wsv-axis{stroke:#3a3d4a;stroke-width:1}
+.wsv-tick{fill:#888;font-size:9px}
+.wsv-line{fill:none;stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.wsv-cmd{stroke-dasharray:5 4;opacity:.85}
+.wsv-meas{opacity:1}
+.wsv-crosshair{stroke:#666;stroke-width:1;stroke-dasharray:2 2}
+.wsv-legend{display:flex;flex-wrap:wrap;gap:.5rem 1rem;justify-content:center;
+  font-size:calc(var(--fs) * .72);color:var(--mut)}
+.wsv-legend-item{display:inline-flex;align-items:center;gap:.3rem}
+.wsv-swatch{display:inline-block;width:14px;height:2px;border-radius:1px}
+.wsv-swatch-dash{width:14px;height:0;background:none;border-top:2px dashed}
+.wsv-tooltip{font-size:calc(var(--fs) * .8);color:var(--mut);text-align:center;
+  font-variant-numeric:tabular-nums}
+
+/* ---------- S-40 校正（WP-MAINT-03。screens/S40Calib.jsx） ---------- */
+.s40-row{display:flex;align-items:center;gap:8px;padding:8px 4px;border-bottom:1px solid var(--bd)}
+.s40-row:last-child{border-bottom:none}
+.s40-row.running{background:#1f2634}
+/* S-30 の「校正へ」からの誘導先（計画書 §6 #11。screens/calibGuide.js）。
+   running と同じ背景に警告色の左帯で、色だけに頼らず形でも分かるようにする。 */
+.s40-row.guided{background:#1f2634;box-shadow:inset 4px 0 0 var(--warn-tx)}
+.s40-guide{margin:0 0 8px;padding:8px;border-left:4px solid var(--warn-tx);
+  background:#1f2634;font-size:calc(var(--fs) * .92)}
+.s40-row-main{flex:1 1 auto;display:flex;flex-direction:column;gap:2px;min-width:0}
+.s40-row-label{font-weight:700}
+.s40-warn{color:var(--warn-tx);font-size:calc(var(--fs) * .84)}
+.s40-step-title{font-weight:700;margin:0 0 6px}
+.s40-bar{height:12px;border-radius:999px;overflow:hidden;background:var(--inset);
+  border:1px solid var(--bd-hi);min-width:80px;margin:8px 0}
+.s40-bar i{display:block;height:100%;border-radius:999px;background:var(--ok-tx)}
+.s40-input{display:block;width:100%;min-height:44px;font-size:calc(var(--fs) * 1.1);margin-top:4px}
+.s40-preview{margin:10px 0;padding:8px;border:1px solid var(--bd);border-radius:var(--r)}
+.s40-imu-parts{list-style:none;margin:0;padding:0}
+/* S-31 チェック手順: 全体リセット(*{padding:0})で番号が枠の外へ出ていたので、番号の分の余白を戻す */
+.s31-hints{list-style:decimal outside;padding-left:1.8em;margin:0 0 8px}
+.s31-hints li{padding-left:.2em;margin-bottom:4px;overflow-wrap:anywhere}
+.s40-hist{margin-bottom:10px}
+
+/* フォルト履歴（Spec-webui.md §1・§3.15）。一覧は S-50 タブと窓で共通。 */
+.fh-rows{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.fh-row{border:1px solid var(--bd-hi);border-radius:8px;padding:6px 10px;background:#151b26}
+.fh-row.ongoing{border-color:var(--ng)}
+.fh-l1{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline}
+.fh-time{font-variant-numeric:tabular-nums;opacity:.85}
+.fh-dur{margin-left:auto}
+.fh-l2{display:flex;flex-wrap:wrap;gap:2px 10px;font-size:calc(var(--fs) * .8);opacity:.85}
+.fh-sev.crit{color:var(--ng-tx);font-weight:700}
+.win.fh-win > .bodyw{max-height:60vh}
+/* ヘッダの「直近の異常」。#faultBox 内で縮めるだけ（ヘッダの高さを変えない）。 */
+#recentFault{
+  flex:0 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  font-size:calc(var(--fs) * .74);font-weight:700;padding:3px 9px;border-radius:999px;
+  background:#2a2a14;border:1px solid #6a6a2a;color:var(--warn-tx);cursor:pointer;
+}
+/* W-1 の再開確認に添える「解消した異常」。 */
+.fh-resolved{color:var(--warn-tx)}
+
+
+/* ---------- ② モックアップの操作台（実機には無い） ---------- */
+#demo{position:fixed;right:10px;bottom:10px;z-index:940;background:#0c1220;border:1px solid #2c4a74;border-radius:10px;
+  box-shadow:0 10px 34px #000b;font-size:13px;max-width:360px;color:var(--tx)}
+#demo h4{padding:8px 11px;font-size:12.5px;letter-spacing:.08em;color:#8fc0f0;border-bottom:1px solid #1e3452;display:flex;align-items:center;gap:8px}
+#demoBody{padding:9px 11px;display:grid;gap:8px;max-height:66dvh;overflow:auto}
+#demo.min #demoBody{display:none}
+#demo .dgrp{display:grid;gap:5px}
+#demo .dgrp > span{color:var(--mut);font-size:11.5px;font-weight:700}
+#demo .drow{display:flex;gap:5px;flex-wrap:wrap}
+#demo .btn{padding:6px 9px;font-size:12.5px;font-weight:600}
+#demoToggle{margin-left:auto;background:#1b2c47;border:1px solid #2c4a74;border-radius:5px;padding:2px 9px}
+#demo.shift{bottom:130px}
+
+/* ---------- ③ fk: ここから（本システムで足したもの） ---------- */
+/* 2 列（th の S-20・S-21 と同じ 1.35fr:1fr）。手順バーは 2 列にまたがって一番上（th の UX-1）。
+   図は左列の残りの高さに合わせて縮む（th U-13: スクロールさせない） */
+#fk{display:grid;grid-template-columns:1.35fr 1fr;grid-template-rows:auto minmax(0,1fr);gap:0 10px;height:100%}
+#fk.screen{max-width:none;margin:0}   /* th の 1 列画面の幅の上限（1100px）を外す。この画面は 2 列 */
+#fk > .stepbar-cell{grid-column:1 / -1;margin-bottom:8px}
+#fk .col{min-width:0;min-height:0;display:flex;flex-direction:column}
+#fk .top-actions{margin-bottom:8px}
+#fk .top-actions .pill{font-size:calc(var(--fs) * .8);padding:4px 11px}
+.stepbar-step.ng .stepbar-num{background:#3a1414;border-color:var(--ng);color:#fff;width:28px;height:28px;box-shadow:0 0 0 3px #ef535055}
+.stepbar-step.ng .stepbar-label{color:var(--ng-tx);font-weight:700}
+.stepbar-step.ng{opacity:1!important}
+.pill.run{background:#12233d;border-color:var(--brand);color:#cfe3fa}
+#exitBtn.urge{border-color:var(--warn);color:var(--warn-tx);box-shadow:0 0 0 2px #ffb74d55}
+
+/* 配置図 */
+.fkmap{flex:1 1 auto;min-height:0;position:relative;background:#191c23;border:1px solid var(--bd);
+  border-radius:var(--r);overflow:hidden}
+.fkmap svg{display:block;width:100%;height:100%;user-select:none}
+.fkmap .mapBanner{display:block}
+.fkmap .mapBanner:empty{display:none}
+.mapVeil{position:absolute;inset:0;background:#07090dcc;display:none;align-items:center;justify-content:center;
+  text-align:center;color:var(--ng-tx);font-weight:800;font-size:calc(var(--fs) * 1.05);line-height:1.6;padding:20px}
+.mapVeil.show{display:flex}
+.legend{display:flex;gap:4px 14px;flex-wrap:wrap;margin-top:6px;font-size:calc(var(--fs) * .72);color:var(--mut)}
+.legend span{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.legend i{display:inline-block;width:15px;height:11px;border-radius:2px;border:1.5px solid}
+.lg-sel{background:#2c4a74;border-color:#7fb4ee!important}
+.lg-done{background:#1d4a25;border-color:#6fcf76!important}
+.lg-skip{background:#4a1a1a;border-color:#ef6b68!important}
+.lg-doubt{background:transparent;border-style:dashed!important;border-color:#8b93a1!important}
+.lg-front{background:transparent;border:none!important;border-bottom:3px solid #fff!important;height:7px!important;border-radius:0!important}
+.lg-unseen{background:repeating-linear-gradient(135deg,#ffb74d66 0 2px,transparent 2px 5px);border-color:#ffb74d88!important}
+.pnl.pick{cursor:pointer}
+.pnl.pick:hover .body{stroke-width:3.5}
+@keyframes tgtpulse{0%{opacity:1}50%{opacity:.35}100%{opacity:1}}
+.tgt-pulse{animation:tgtpulse 1.4s ease-in-out infinite}
+@keyframes sweep{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+
+/* 右列: 上から「次にやること」→ 操作カード → 巡回 → タブ。上の 3 つは高さを変えない（停止の位置を動かさない） */
+#fk .next-action{min-height:calc(var(--fs) * 3.1);margin-bottom:8px}
+#fk .next-action.info{cursor:default;background:var(--inset);border:1px dashed var(--bd-hi);color:var(--mut);font-weight:600}
+#fk .next-action.info.ng{color:var(--ng-tx);border-color:#7a2a2a}
+.spin{width:1em;height:1em;border-radius:50%;border:2px solid #7fb4ee44;border-top-color:#7fb4ee;animation:sweep 1s linear infinite;flex:0 0 auto}
+#fk .card.ops{margin-bottom:8px}
+#fk .ops .opsgrid .btn{min-height:calc(var(--fs) * 2.9);font-size:calc(var(--fs) * 1.02)}
+#fk .ops .opsgrid{align-items:start}
+.ops .sub{font-size:calc(var(--fs) * .82);color:var(--mut);margin-top:2px;min-height:1.4em;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tour{min-height:calc(var(--fs) * 5.4)}
+.tour .row{flex-wrap:nowrap}
+.tour .cnt{font-size:calc(var(--fs) * .84)}
+.tour .cnt b{font-size:calc(var(--fs) * 1.1)}
+.prog{display:flex;height:9px;border-radius:99px;overflow:hidden;background:#0b0d12;border:1px solid var(--bd);margin:7px 0 2px}
+.prog i{display:block;height:100%}
+.prog .p-done{background:var(--ok)}.prog .p-skip{background:var(--ng)}.prog .p-cur{background:var(--warn)}
+.btn.armed{background:#7a1c1c;border-color:var(--ng);color:#fff}
+#fk .subtabs{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
+#fk .subtabs > .tabs{margin-bottom:6px;flex:0 0 auto}
+#fk .subtabs > .tabpane{display:none}
+#fk .subtabs > .tabpane.on{display:block;flex:1 1 auto;min-height:0;overflow-y:auto}
+/* 配電盤の一覧（地図より押しやすい当たり判定。列ごとに束ねる） */
+.plist td{padding:7px 8px;border-bottom:1px solid var(--bd);font-size:calc(var(--fs) * .86);vertical-align:middle}
+.plist tr.rowhd td{background:#161a22;color:var(--mut);font-size:calc(var(--fs) * .74);font-weight:700;letter-spacing:.06em;
+  padding:5px 8px;position:sticky;top:0;z-index:1}
+.plist tr.pk{cursor:pointer}
+.plist tr.pk:hover td{background:#1c212b}
+.plist tr.on td{background:#1f2634}
+.plist tr.cur td{background:#2a2412}
+.plist td.r{text-align:right}
+.chk{display:inline-flex;width:1.35em;height:1.35em;border-radius:5px;border:1.5px solid var(--bd-hi);align-items:center;
+  justify-content:center;font-size:calc(var(--fs) * .8);font-weight:900;color:#fff;vertical-align:middle}
+.on .chk{background:#2c4a74;border-color:#7fb4ee}
+.ord{display:inline-flex;min-width:1.5em;height:1.5em;border-radius:99px;align-items:center;justify-content:center;
+  background:#24282f;border:1px solid var(--bd-hi);font-size:calc(var(--fs) * .74);font-weight:800}
+.cur .ord{background:#4a3410;border-color:var(--warn);color:var(--warn-tx)}
+.tag{display:inline-block;font-size:calc(var(--fs) * .68);font-weight:700;padding:1px 6px;border-radius:4px;margin-left:5px;
+  border:1px solid #6a4a18;color:var(--warn-tx);background:#2a1c0a;vertical-align:1px}
+.rowsel{font-size:calc(var(--fs) * .72);padding:2px 8px;border:1px solid var(--bd-hi);border-radius:5px;float:right;
+  color:var(--tx);background:var(--ctrl);letter-spacing:0}
+.res td{padding:7px 8px;border-bottom:1px solid var(--bd);font-size:calc(var(--fs) * .86)}
+.res th{padding:6px 8px;border-bottom:1px solid var(--bd);color:var(--mut);font-size:calc(var(--fs) * .72);text-align:left;font-weight:700;letter-spacing:.06em}
+.res .why{color:var(--mut);font-size:calc(var(--fs) * .8)}
+.dev-kv{display:grid;grid-template-columns:auto 1fr;gap:9px 14px;font-size:calc(var(--fs) * .9);align-items:center}
+.dev-kv dt{color:var(--mut)}
+.dev-kv dd{text-align:right}
+/* 帯は th の stop-banner（下端に重ねる 1 行。本文を押し下げない）をそのまま使う。出すのは 1 本だけ（設計 §5.2）。
+   th の帯は赤だけ。待っているだけのとき（関門・th の拒否）は黄にする */
+.stop-banner:empty{display:none}
+.stop-banner.warn{background:#3a2a10;border-color:#7a5a20;color:var(--warn-tx)}
+/* 縦長（960×1280）: 配置図を上に全幅で置き、操作を下に 2 列で並べる */
+@container app (orientation: portrait){
+  #fk{grid-template-columns:1fr 1fr;grid-template-rows:auto minmax(0,1fr) min(40cqh,500px);gap:10px}
+  #fk > .stepbar-cell{margin-bottom:0}
+  #fk .col-main{grid-column:1 / -1}
+  #fk .col-side{display:contents}
+  #fk .side-a,#fk .side-b{min-height:0;display:flex;flex-direction:column}
+}
+#fk .side-b{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
+</style>
+</head>
+<body>
+<div id="stage"><div id="app">
+
+<!-- ============ ヘッダ：th と同じ（th shell/Header.jsx を取り込んで使う）。常に最上位 ============ -->
+<header id="hdr" data-tone="normal">
+  <div class="row1">
+    <div id="logo"><img alt="" src="data:image/png;base64,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"></div>
+    <div class="proj">MIRS2602-<b>高見舎プロジェクト</b></div>
+    <div class="spacer"></div>
+    <div id="screenName">測定機能</div>
+    <div id="zonePill" class="show" style="display:block"><span class="z-long">試験場内・低速・自動ブレーキON</span><span class="z-short">場内・低速</span></div>
+    <div id="modePill">自律測定</div>
+  </div>
+  <div class="row2">
+    <div id="faultBox">
+      <span id="faultDot"></span>
+      <span id="faultTx">正常</span>
+      <span class="spacer grow"></span>
+      <button id="faultBadge" class="show" onclick="reshowFault()">再表示 ▲</button>
+    </div>
+    <button id="estopBtn" onclick="onEstop()">非常停止</button>
+  </div>
+</header>
+
+<!-- 止まっている・待っている理由の帯（th の stop-banner。1 本だけ。優先順は設計 §5.2） -->
+<div class="stop-banner" id="banner"></div>
+
+<main id="body">
+<section class="screen" id="fk">
+  <div class="stepbar-cell">
+    <ol class="stepbar" id="steps"></ol>
+  </div>
+  <!-- ---------- 左列：主表示（配置図） ---------- -->
+  <div class="col col-main">
+    <div class="top-actions">
+      <button class="btn sm" id="exitBtn" onclick="onExit()">終了</button>
+      <!-- 案（設計 §9 の問い 2）: th の S-60 へ移るだけ。抜けない -->
+      <button class="btn sm" id="toThBtn" onclick="reject('モックアップでは走行系の画面を開けません（別のポートの画面です）。')">走行系の画面へ</button>
+      <span class="grow"></span>
+      <span class="pill" id="phasePill">—</span>
+    </div>
+    <div class="fkmap" id="mapBox">
+      <div class="mapBanner" id="mapBanner"></div>
+      <svg id="map" preserveAspectRatio="xMidYMid meet" aria-label="配置図"></svg>
+      <div class="mapVeil" id="mapVeil"><div>この地図と配置図は使えません<br><span class="sm">自律測定に入り直すと作り直します</span></div></div>
+    </div>
+    <div class="legend">
+      <span><i class="lg-sel"></i>選択・順番</span>
+      <span><i class="lg-done"></i>測定済み</span>
+      <span><i class="lg-skip"></i>飛ばした</span>
+      <span><i class="lg-front"></i>正面</span>
+      <span><i class="lg-doubt"></i>位置が確かでない</span>
+      <span><i class="lg-unseen"></i>見ていない方向</span>
+    </div>
+  </div>
+
+  <!-- ---------- 右列：操作 ---------- -->
+  <div class="col col-side">
+    <div class="side-a">
+      <button class="next-action" id="nextAct" onclick="onNext()">—</button>
+      <!-- 操作カード：th の格子のまま（停止＝左上・走行＝右上）。色は th の opButtonTone() -->
+      <div class="card ops">
+        <div class="opsgrid" id="opsgrid"></div>
+        <div class="state" id="stateTx">—</div>
+        <div class="sub" id="stateSub"></div>
+      </div>
+      <div class="card tour" id="tour"></div>
+    </div>
+    <div class="side-b">
+      <div class="subtabs">
+        <div class="tabs">
+          <button class="tab on" data-t="tp1" onclick="selectTab(this.dataset.t)">配電盤</button>
+          <button class="tab" data-t="tp2" onclick="selectTab(this.dataset.t)">結果</button>
+          <button class="tab" data-t="tp3" onclick="selectTab(this.dataset.t)">機器の状態</button>
+        </div>
+        <div class="tabpane on" id="tp1"></div>
+        <div class="tabpane" id="tp2"></div>
+        <div class="tabpane" id="tp3"></div>
+      </div>
+    </div>
+  </div>
+</section>
+</main>
+
+<!-- ============ 非常停止 解除バー（下端固定。th と同じ。ウィンドウより上） ============ -->
+<div id="release">
+  <div class="rt">非常停止中です。解除するには下のボタンを押してください。</div>
+  <button id="releaseBtn" onclick="releaseEstop()">非常停止を解除</button>
+</div>
+
+<!-- ============ ウィンドウ層（ヘッダの下・本文の上。th と同じ） ============ -->
+<div id="overlay">
+  <div class="backdrop"></div>
+  <!-- W-1 異常ウィンドウ（th の異常を th と同じ決まりで出す。応答は th へ ui.resume_*） -->
+  <div class="win fault" id="winFault">
+    <header id="wfTitle">⚠ 異常が発生しました</header>
+    <div class="bodyw" id="wfBody">—</div>
+    <footer id="wfFoot"></footer>
+  </div>
+  <!-- W-1 非常停止 -->
+  <div class="win fault" id="winEstop">
+    <header id="weTitle">⚠ 非常停止中</header>
+    <div class="bodyw" id="weBody"></div>
+    <footer id="weFoot"></footer>
+  </div>
+  <!-- W-4 終了の確認（腕の確認は th の「自律測定を終了」と同じ文言） -->
+  <div class="win confirm" id="winExit">
+    <header id="wxTitle">—</header>
+    <div class="bodyw" id="wxBody">—</div>
+    <footer id="wxFoot"></footer>
+  </div>
+  <!-- 機能側が拒否した理由（押されて初めて出す。th と同じ） -->
+  <div class="win confirm" id="winReject">
+    <header>この操作はできません</header>
+    <div class="bodyw" id="wrBody">—</div>
+    <footer><button class="btn primary" onclick="closeWin('winReject')">確認</button></footer>
+  </div>
+</div>
+
+</div></div>
+
+<!-- ================= モックアップの操作台（実機には無い） ================= -->
+<div id="demo">
+  <h4>モックアップの操作 <button id="demoToggle" onclick="this.closest('#demo').classList.toggle('min')">－</button></h4>
+  <div id="demoBody">
+    <div class="dgrp"><span>段</span><div class="drow">
+      <button class="btn" onclick="scene('SURVEY')">探す</button>
+      <button class="btn" onclick="scene('SELECT')">選ぶ</button>
+      <button class="btn" onclick="scene('LOWER')">下げる（待ち）</button>
+      <button class="btn" onclick="scene('GOAL')">移動</button>
+      <button class="btn" onclick="scene('PAUSED')">一時停止</button>
+      <button class="btn" onclick="scene('AT_PANEL')">盤前</button>
+      <button class="btn" onclick="scene('FINISH')">回り終え</button>
+    </div></div>
+    <div class="dgrp"><span>止まる・つながらない</span><div class="drow">
+      <button class="btn" onclick="scene('REJECT')">th が拒否</button>
+      <button class="btn" onclick="scene('EMPTY')">盤が見つからない</button>
+      <button class="btn" onclick="scene('HALTED')">全体を止めた</button>
+      <button class="btn" onclick="scene('REENTRY')">自己位置を見失った</button>
+      <button class="btn" onclick="scene('FK_LOST')">測定機能と途絶</button>
+      <button class="btn" onclick="scene('TH_LOST')">走行系と途絶</button>
+    </div></div>
+    <div class="dgrp"><span>th のウィンドウ</span><div class="drow">
+      <button class="btn" onclick="raiseFault()">異常（W-1）</button>
+      <button class="btn" onclick="resolveFault()">異常が解決</button>
+      <button class="btn" onclick="onEstop()">非常停止</button>
+    </div></div>
+    <div class="dgrp"><span>腕（終了の確認が変わる）</span><div class="drow">
+      <button class="btn" id="armB0" onclick="setArm('none')">機構なし</button>
+      <button class="btn" id="armB1" onclick="setArm('stowed')">格納位置</button>
+      <button class="btn" id="armB2" onclick="setArm('unknown')">読めない</button>
+    </div></div>
+    <div class="dgrp"><span>表示（実機は端末の向きで決まる）</span><div class="drow">
+      <button class="btn" id="pvA" onclick="pv('auto')">自動</button>
+      <button class="btn" id="pvL" onclick="pv('landscape')">横長 1280×720</button>
+      <button class="btn" id="pvP" onclick="pv('portrait')">縦長 960×1280</button>
+    </div></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+
+/* ================= 文言（設計 §7 の表と同じ。実装は fk_web/src/i18n/ に置く） ================= */
+const PHASE = {   // 段 → [操作カードの状態, 操作バーのピル, 手順]
+  PREPARE: ['準備しています', '準備中', 1],
+  SURVEY:  ['配電盤を探しています', '探しています', 1],
+  SELECT:  ['測る配電盤を選んでください', '選んでください', 2],
+  LOWER:   ['昇降機を下げています', '昇降機を下げています', 3],
+  GOAL:    ['配電盤 {p} へ移動中', '移動中', 3],
+  RECHECK: ['配電盤 {p} を確かめ直しています', '確かめ直し中', 3],
+  AT_PANEL:['配電盤 {p} の前で作業中', '配電盤前', 3],
+  PAUSED:  ['一時停止中', '一時停止中', 3],
+  FINISH:  ['選んだ配電盤を回り終えました', '回り終えました', 4],
+  REENTRY: ['自己位置を見失いました', '入り直しが要ります', 0],
+  HALTED:  ['止まっています', '止まっています', 0],
+};
+const STEPS = ['配電盤を探す', '測る配電盤を選ぶ', '回って測る', '結果'];
+const SKIP = {
+  no_path: '経路が見つからない', stand_blocked: '正面の床が塞がっていて立てない',
+  stand_mismatch: '立ち位置が合わない', top_not_found: '天面が見つからない',
+  arm_space_blocked: '腕を振る場所が塞がっている', no_mechanism: '測定機構が付いていない',
+  ss_failed: '画像認識の結果が得られない', camera_too_low: 'カメラを必要な高さまで上げられない',
+};
+const HALT = {
+  arm_stuck: '測定機構の腕が出たまま動けません', lift_not_lowered: '昇降機を下げられません',
+  state_unreadable: '昇降機の高さか腕の状態が読めません', ss_cleanup_timeout: '画像認識の後片付けが終わりません',
+  ss_link_lost: '画像認識と通信できません', arm_link_lost: '測定機構の制御器と通信できません',
+};
+const GATE = {   // 関門で止めている理由（AutoState.gate_reason）。帯にそのまま出す文
+  lift_not_bottom: '昇降機が下端に着くのを待っています', arm_not_stowed: '測定機構の腕が格納位置に戻るのを待っています',
+  ss_busy: '画像認識が昇降機とカメラを使い終わるのを待っています', state_unreadable: '走行系・昇降機・腕・画像認識のどれかの状態が読めないため、止めています',
+  reentry_required: '自律測定に入り直すまで動けません', version_mismatch: '走行系とやり取りの版が合わないため、指示を出せません',
+  th_not_waiting: '走行系が指示待ちになるのを待っています', arm_link_lost: '測定機構の制御器と通信できないため、止めています',
+  lift_drift: '昇降機が下端から離れたため止めました', not_listed: '出せない指示を止めました（不具合です。記録してください）',
+};
+const TH_REJECT = {  // th の /measure/command の拒否理由（キーは th DetailedDesign-measure.md §3.1）＋ th_unreachable
+  state_not_accepting: '走行系がいまは指示を受けられません', turning: '旋回中です',
+  corner_obstacle: '機体の周りに障害物があります', map_mismatch: '地図が作り直されています',
+  version_mismatch: 'やり取りの版が合いません', link_lost: '測定機能の生存確認が届いていません',
+  localization_lost: '自己位置を見失っています', bad_argument: '指示の中身が正しくありません',
+  th_unreachable: '走行系に指示が届きません',
+};
+const SURVEY_WHY = { // Layout.survey_reason（ss の終わり方のキーのまま。completed は空）
+  no_lugs: '吊り金具が見つかりませんでした', lugs_ungrouped: '吊り金具を配電盤にまとめられませんでした',
+  no_image: 'カメラの画像が得られませんでした', lift_refused: '昇降機を動かせませんでした',
+  camera_too_low: 'カメラを必要な高さまで上げられませんでした', canceled: '途中で取り消しました',
+  timeout: '時間内に全周を見終わりませんでした', human_override: '人が昇降機を操作したため中断しました',
+  ss_failed: '画像認識の結果が得られませんでした',
+};
+const PAUSE_WHY = { stop: '「停止」で止めました', estop: '非常停止で止まりました', jog: '手動操作が割り込みました',
+  fault: '異常で止まりました', presence_lost: '操作する画面が離れたため止まりました', lift_drift: '昇降機が下端から離れたため止めました' };
+const TH_STATE = {WAIT:'指示待ち',NAV:'走行中',ALIGN:'向きを合わせています',BLOCKED:'塞がれて止まっています',ADJUST:'配電盤の前で旋回中',PAUSE:'一時停止'};
+const REJECT = {   // AutoCommand.reject_reason（押して拒否されたときのウィンドウ）
+  phase_not_accepting: 'いまはこの操作を受け付けません', bad_argument: '配電盤を選んでください',
+  arm_not_confirmed: '測定機構の腕が格納位置にあることを確かめてください',
+};
+
+/* ================= 段ごとの決まり（設計 §4 の表と同じ） ================= */
+const TH_RUNNING = ['NAV','ALIGN','BLOCKED'];          // runner の _RUNNING と同じ。auto.stop を受ける
+const ABORTABLE  = ['GOAL','RECHECK','AT_PANEL','PAUSED']; // auto.abort を受ける段（-names.md §4.2）
+const PICKABLE   = ['SELECT','FINISH'];                  // auto.start・auto.rescan を受ける段
+const RUNNING    = ['LOWER','GOAL','RECHECK','AT_PANEL'];
+// 青（いまの状態）: 機能側が返す th の状態（AutoState.th_state）から。走っている → 走行、一時停止 → 停止（th U-17）。
+// th の rosbridge が切れても、機能側は ROS 2 で th とつながっているので、操作カードは機能側の様子で決める
+const blueOf = () => S.fkLost ? null : TH_RUNNING.includes(S.thState) ? 'run' : S.thState==='PAUSE' ? 'stop' : null;
+// th shell/limits.js の opButtonTone() と同じ（取り込んで使う）
+function opButtonTone(slot, blue){
+  if((slot==='stop'||slot==='check'||slot==='run') && blue===slot) return 'current';
+  if(slot==='stop' && (blue==='run'||blue==='check')) return 'next-stop';
+  if(slot==='run' && blue==='stop') return 'next-run';
+  return 'face';
+}
+
+/* ================= 配置図のデータ（モックアップ用の部屋。map フレーム [m]） ================= */
+const D2R = Math.PI / 180;
+const P = (id,x,y,yawDeg,row,o={}) => Object.assign({id,x,y,yaw:yawDeg*D2R,w:0.9,d:0.7,row,confident:true,doubt:false},o);
+const PANELS = [
+  P('P001',3.2,8.45,-90,'R1'), P('P002',4.2,8.45,-90,'R1'), P('P003',5.2,8.45,-90,'R1'), P('P004',6.2,8.45,-90,'R1'),
+  P('P005',3.4,3.6,90,'R2'), P('P006',4.4,3.6,90,'R2',{doubt:true}), P('P007',5.4,3.6,90,'R2'),
+  P('P008',12.75,4.9,180,'R3'), P('P009',12.75,5.9,180,'R3'),
+  P('P010',12.75,2.2,180,'R4',{confident:false}),
+];
+const PBY = Object.fromEntries(PANELS.map(p=>[p.id,p]));
+const STAND_MIN = 0.389, FOOT = 0.55;           // th の値（-names.md §5）
+const ORIGIN = {x:8.6,y:5.0};                  // 全周を探した位置（Layout の survey_x/y）
+const UNSEEN = [[-100*D2R,-40*D2R]];            // 見ていない方向（map フレームの方位角）
+const ROOM = [[0.5,0.5],[9.4,0.5],[9.4,0.35],[10.6,0.35],[10.6,0.5],[13.5,0.5],[13.5,9.2],[0.5,9.2],[0.5,0.5]];
+const FLOOR = [[0.55,1.4],[1.6,0.55],[9.4,0.55],[13.45,0.55],[13.45,9.15],[0.55,9.15]];
+const OBST = [[9.4,7.4,0.5,0.5],[3.9,7.2,0.6,0.42],[0.55,5.2,0.6,1.4]];  // x,y,w,h（柱・台車・棚）
+const ORDER = ['P008','P009','P004','P003','P002','P001'];   // 回る順（近い列から。列の中は正面に向かって右から）
+
+/* ================= 場面（AutoState・Layout・PanelResults・th の様子をまとめたもの） ================= */
+const SC = {};
+function base(){ return {phase:'SELECT', panels:PANELS.map(p=>p.id), sel:new Set(), queue:[], cur:'',
+  results:{}, robot:{x:ORIGIN.x,y:ORIGIN.y,yaw:90*D2R}, gate:'', halt:'', thReject:'', surveyWhy:'', pauseWhy:'',
+  fkLost:false, thLost:false, lastStep:2, lift:'bottom', ss:'待機', thState:'WAIT', thReentry:false,
+  run:null, tp:0, from:''}; }   // run = 今回の巡回 {ids: 回る順, done: 済んだ盤}。tp = 今の段に入ってからの ms（模擬用）
+SC.SURVEY = () => Object.assign(base(),{phase:'SURVEY',panels:[],ss:'探しています',lastStep:1});
+SC.SELECT = () => Object.assign(base(),{sel:new Set(['P001','P002','P003','P004','P008','P009'])});
+SC.EMPTY  = () => Object.assign(base(),{panels:[],surveyWhy:'no_lugs'});
+SC.REJECT = () => Object.assign(SC.SELECT(),{thReject:'corner_obstacle'});
+SC.LOWER  = () => Object.assign(base(),{phase:'LOWER',queue:ORDER.slice(1),cur:'P008',run:{ids:ORDER.slice(),done:[]},gate:'ss_busy',
+  lift:'下端から 420 mm',ss:'後片付け中',lastStep:3});
+const RUN_RES = {P008:['DONE'],P009:['SKIPPED','top_not_found'],P004:['DONE']};
+SC.GOAL   = () => Object.assign(base(),{phase:'GOAL',queue:['P002','P001'],cur:'P003',run:{ids:ORDER.slice(),done:['P008','P009','P004']},results:{...RUN_RES},
+  robot:{x:5.78,y:7.72,yaw:180*D2R},thState:'NAV',lastStep:3});
+SC.PAUSED = () => Object.assign(SC.GOAL(),{phase:'PAUSED',pauseWhy:'jog',thState:'PAUSE',from:'GOAL'});
+SC.AT_PANEL=() => Object.assign(SC.GOAL(),{phase:'AT_PANEL',robot:{x:5.2,y:7.71,yaw:90*D2R},thState:'WAIT'});
+SC.FINISH = () => Object.assign(base(),{phase:'FINISH',sel:new Set(),
+  results:{...RUN_RES,P003:['DONE'],P002:['SKIPPED','stand_blocked'],P001:['DONE']},
+  run:{ids:ORDER.slice(),done:ORDER.slice()},robot:{x:3.2,y:7.71,yaw:90*D2R},lastStep:4});
+SC.HALTED = () => Object.assign(SC.GOAL(),{phase:'HALTED',halt:'lift_not_lowered',lift:'高さが読めません',thState:'WAIT'});
+SC.REENTRY= () => Object.assign(SC.GOAL(),{phase:'REENTRY',cur:'',queue:[],thState:'WAIT',thReentry:true});
+SC.FK_LOST= () => Object.assign(SC.GOAL(),{fkLost:true});
+SC.TH_LOST= () => Object.assign(SC.GOAL(),{thLost:true});
+
+let S = SC.SELECT();
+let ARM = 'stowed';                // 'none' 測定機構なし / 'stowed' 格納位置 / 'unknown' 読めない
+let estop = false, fault = null, faultHidden = false, armedAbort = null;
+
+function scene(name){
+  S = SC[name]();
+  if(name==='FINISH') selectTab('tp2'); else if(['SELECT','REJECT','GOAL','SURVEY','EMPTY'].includes(name)) selectTab('tp1');
+  clearArmed(); render();
+}
+
+/* ================= 描画 ================= */
+function render(){ paintHeader(); paintBanner(); paintSteps(); paintOpbar(); paintMap(); paintNext(); paintOps(); paintTour(); paintList(); paintResults(); paintDevices(); }
+const isRunning = () => RUNNING.includes(S.phase);
+const canPick = () => PICKABLE.includes(S.phase) && !S.fkLost;
+function runTotal(){ return S.run ? S.run.ids.length : 0; }
+function runIndex(){ return S.run ? S.run.done.length + (S.cur?1:0) : 0; }
+function runIndexOf(id){ return S.run ? S.run.ids.indexOf(id) + 1 : 0; }
+function runCounts(){ let done=0, skip=0; if(S.run) for(const id of S.run.done){ const r = S.results[id]; if(r) r[0]==='DONE'?done++:skip++; } return {done,skip}; }
+function counts(){ let done=0, skip=0; for(const r of Object.values(S.results)) r[0]==='DONE'?done++:skip++; return {done,skip}; }
+const skipped = () => Object.entries(S.results).filter(([,r])=>r[0]==='SKIPPED').map(([id])=>id);
+
+function paintHeader(){
+  const mode = $('modePill');
+  mode.textContent = S.thLost ? '不明' : (estop ? '非常停止' : '自律測定');
+  $('hdr').dataset.tone = S.thLost ? 'normal' : (estop ? 'estop' : 'normal');   // th の headerTone()
+  let t = '正常', c = 'var(--ok)';
+  if(S.thLost){ t = '制御系と通信できません'; c = 'var(--ng)'; }
+  else if(estop){ t = '非常停止中'; c = 'var(--ng)'; }
+  else if(fault && !fault.resolved){ t = fault.label; c = 'var(--warn)'; }
+  $('faultTx').textContent = t; $('faultDot').style.background = c;
+  $('faultBadge').style.display = (fault && faultHidden && !fault.resolved) ? '' : 'none';
+  $('estopBtn').classList.toggle('engaged', estop);
+}
+
+function bannerOf(){
+  if(S.thLost) return ['','走行系と通信できません。この画面の非常停止は届きません。機体の非常停止ボタンを使ってください。'];
+  if(S.fkLost) return ['','測定機能と通信できません。この画面の操作は届きません（非常停止は届きます）。'];
+  if(S.phase==='REENTRY') return ['','自己位置を見失いました。「終了」で抜けて、自律測定に入り直してください（測り終えた結果は残ります）。'];
+  if(S.phase==='HALTED') return ['','止まっています：'+HALT[S.halt]+'。周りを確かめてから「終了」で抜けてください。'];
+  if(S.thReject){
+    const next = S.phase==='PAUSED' ? 'もう一度「走行」を押してください' : '配電盤を選び直して「開始」してください';
+    return ['warn', '走行系が指示を受けませんでした：'+(TH_REJECT[S.thReject]||S.thReject)+'。'+next+'。'];
+  }
+  if(S.gate) return ['warn', GATE[S.gate]+'。'];
+  return null;
+}
+function paintBanner(){ const b = bannerOf(), el = $('banner'); el.className = 'stop-banner' + (b && b[0] ? ' ' + b[0] : ''); el.textContent = b ? b[1] : ''; }
+
+const CHECK = '<svg viewBox="0 0 16 16" class="stepbar-check" aria-hidden="true"><path d="M3 8.5 L6.5 12 L13 4.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+function paintSteps(){
+  const cur = PHASE[S.phase][2] || S.lastStep, bad = PHASE[S.phase][2] === 0;
+  $('steps').innerHTML = STEPS.map((label, i) => {
+    const n = i + 1, cls = n < cur ? 'done' : n === cur ? (bad ? 'ng' : 'cur') : '';
+    const num = n < cur ? CHECK : (bad && n === cur ? '!' : n);
+    return (i ? '<li class="stepbar-link"></li>' : '') + '<li class="stepbar-step ' + cls + '"><span class="stepbar-num">' + num + '</span><span class="stepbar-label">' + label + '</span></li>';
+  }).join('');
+}
+
+function paintOpbar(){
+  const pill = $('phasePill');
+  pill.textContent = S.fkLost ? '不明' : PHASE[S.phase][1];
+  pill.className = 'pill ' + (S.fkLost ? 'ng' : ({REENTRY:'ng',HALTED:'ng',PAUSED:'warn',FINISH:'ok'}[S.phase] || (isRunning() ? 'run' : '')));
+  $('exitBtn').classList.toggle('urge', ['REENTRY','HALTED'].includes(S.phase) || S.fkLost);
+}
+
+function paintNext(){
+  const b = $('nextAct'); b.className = 'next-action';
+  const info = (html, ng) => { b.className = 'next-action info' + (ng?' ng':''); b.innerHTML = html; };
+  if(S.fkLost) return info('測定機能と通信できません', true);
+  switch(S.phase){
+    case 'PREPARE': case 'SURVEY': return info('<span class="spin"></span>周りの配電盤を探しています');
+    case 'SELECT': if(!S.panels.length) return info('配電盤が見つかっていません');
+      b.innerHTML = S.sel.size ? ARROW + '選んだ ' + S.sel.size + ' 面で開始' : ARROW + '開始'; return;
+    case 'FINISH': {
+      if(S.sel.size){ b.innerHTML = ARROW + '選んだ ' + S.sel.size + ' 面で開始'; return; }
+      const sk = skipped(); if(sk.length){ b.textContent = '測れなかった ' + sk.length + ' 面を選び直す'; return; }
+      return info('選んだ配電盤をすべて測りました');
+    }
+    case 'PAUSED': return info('「走行」で続きから再開します');
+    case 'REENTRY': case 'HALTED': return info('左上の「終了」で抜けてください', true);
+    default: return info('<span class="spin"></span>自動で回っています');
+  }
+}
+const ARROW = '<svg class="ic" viewBox="0 0 16 16" width="1em" height="1em" aria-hidden="true"><path d="M3 8h9M8 3l5 5-5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const STOPI = '<svg class="ic" viewBox="0 0 16 16" width="1em" height="1em" aria-hidden="true"><rect x="4" y="4" width="8" height="8" fill="currentColor"/></svg>';
+
+function paintOps(){
+  const blue = blueOf();
+  const tone = slot => { const t = opButtonTone(slot, blue); return 'tone-' + t + (t==='current' ? ' on' : ''); };
+  const stopOk = TH_RUNNING.includes(S.thState) && !S.fkLost;
+  const runOk = S.phase==='PAUSED' && !S.fkLost;
+  // 走行を押せないときの理由（th の UX-2-b の理由バッジ）。押せば分かるものは出さない
+  const runWhy = S.fkLost ? '測定機能と通信できません' : S.phase==='REENTRY' ? '入り直すまで走れません' : S.phase==='HALTED' ? '止まっています' : '';
+  const runBtn = '<button class="btn op-run btn-advance ' + tone('run') + '"' + (runOk || blue==='run' ? '' : ' disabled') + ' onclick="onRun()">' + ARROW + '<span>走行</span></button>';
+  $('opsgrid').innerHTML =
+    '<button class="btn op-stop btn-stop ' + tone('stop') + '"' + (stopOk || blue==='stop' ? '' : ' disabled') + ' onclick="onStop()">' + STOPI + '<span>停止</span></button>' +
+    (runWhy ? '<div class="manual-cell" style="grid-column:3;grid-row:1">' + runBtn + '<span class="reason-badge">' + runWhy + '</span></div>' : runBtn);
+  $('stateTx').textContent = PHASE[S.phase][0].replace('{p}', S.cur);
+  let sub = '';
+  switch(S.phase){
+    case 'SURVEY': sub = '画像認識が周りを見ています（全周）'; break;
+    case 'SELECT': sub = S.panels.length ? '配置図か一覧で選んで「開始」' : SURVEY_WHY[S.surveyWhy] || ''; break;
+    case 'LOWER': sub = '次は配電盤 ' + S.cur; break;
+    case 'GOAL': sub = runIndex() + ' / ' + runTotal() + ' 面目 ・ 次は ' + (S.queue[0] || '―'); break;
+    case 'AT_PANEL': sub = ARM==='none' ? '測定機構が付いていないため、測らずに次へ進みます' : '測定機構が作業しています'; break;
+    case 'PAUSED': sub = PAUSE_WHY[S.pauseWhy] || ''; break;
+    case 'FINISH': { const c = counts(); sub = '測定済み ' + c.done + ' ・ 飛ばした ' + c.skip; break; }
+    case 'REENTRY': sub = 'この地図と配置図は使えません'; break;
+    case 'HALTED': sub = HALT[S.halt]; break;
+  }
+  if(S.fkLost){ sub = '最後に受け取った様子：' + $('stateTx').textContent; $('stateTx').textContent = '測定機能と通信できません'; }
+  $('stateSub').textContent = sub;
+}
+
+function paintTour(){
+  const el = $('tour'), c = runCounts();
+  if(PICKABLE.includes(S.phase) || ['SURVEY','PREPARE'].includes(S.phase)){
+    const n = S.panels.length, dis = canPick() && n ? '' : ' disabled', disR = canPick() ? '' : ' disabled';
+    el.innerHTML =
+      '<div class="row mb"><span class="cnt grow">選択 <b>' + S.sel.size + '</b> 面 ／ 見つかった配電盤 ' + (n || '―') + ' 面</span></div>' +
+      '<div class="btnrow n3">' +
+        '<button class="btn sm"' + dis + ' onclick="selAll(true)">すべて選ぶ</button>' +
+        '<button class="btn sm"' + dis + ' onclick="selAll(false)">選択を解除</button>' +
+        '<button class="btn sm"' + disR + ' onclick="onRescan()">もう一度探す</button>' +
+      '</div>';
+    return;
+  }
+  const total = runTotal() || 1, w = x => (100 * x / total) + '%';
+  const canAbort = ABORTABLE.includes(S.phase) && !S.fkLost;
+  const armed = armedAbort !== null;
+  el.innerHTML =
+    '<div class="row"><span class="cnt grow">測定済み <b>' + c.done + '</b> ・ 飛ばした <b>' + c.skip + '</b> ・ 残り <b>' + (S.queue.length + (S.cur?1:0)) + '</b></span>' +
+    '<button class="btn sm' + (armed ? ' armed' : ' danger') + '"' + (canAbort ? '' : ' disabled') + ' onclick="onAbort()">' +
+      (armed ? 'もう一度押すと中止（' + armedAbort + '）' : '巡回を中止') + '</button></div>' +
+    '<div class="prog"><i class="p-done" style="width:' + w(c.done) + '"></i><i class="p-skip" style="width:' + w(c.skip) + '"></i>' +
+      (S.cur ? '<i class="p-cur" style="width:' + w(1) + '"></i>' : '') + '</div>';
+}
+
+/* 配電盤の一覧（列ごと）。選べる段だけ押せる */
+function paintList(){
+  const el = $('tp1');
+  if(!S.panels.length){ el.innerHTML = '<div class="hint">' + (S.phase==='SURVEY' ? '見つかった配電盤はここに並びます' : '配電盤が見つかっていません。「もう一度探す」で探し直せます') + '</div>'; return; }
+  const rows = {}; for(const id of S.panels){ (rows[PBY[id].row] ||= []).push(id); }
+  const order = S.cur ? [S.cur, ...S.queue] : S.queue;
+  let h = '<table class="plist">';
+  for(const [row, ids] of Object.entries(rows)){
+    h += '<tr class="rowhd"><td colspan="3">列 ' + row + ' ・ ' + ids.length + ' 面' +
+      (canPick() ? '<button class="rowsel" onclick="selRow(\'' + row + '\');event.stopPropagation()">列を選ぶ</button>' : '') + '</td></tr>';
+    for(const id of ids){
+      const p = PBY[id], r = S.results[id], on = S.sel.has(id), oi = order.indexOf(id);
+      const cls = [canPick() ? 'pk' : '', on && canPick() ? 'on' : '', id===S.cur ? 'cur' : ''].join(' ');
+      let st = '';
+      if(id===S.cur) st = '<span class="pill warn">' + (S.phase==='PAUSED' ? '一時停止' : isRunning() ? '向かっています' : '中断') + '</span>';
+      else if(r) st = r[0]==='DONE' ? '<span class="pill ok">測定済み</span>' : '<span class="pill ng">飛ばした</span>';
+      else if(oi > 0) st = '<span class="mut sm">順番待ち</span>';
+      h += '<tr class="' + cls + '"' + (canPick() ? ' onclick="toggle(\'' + id + '\')"' : '') + '>' +
+        '<td style="width:2.4em">' + (canPick() ? '<span class="chk">' + (on ? '✓' : '') + '</span>' : (oi >= 0 ? '<span class="ord">' + runIndexOf(id) + '</span>' : '')) + '</td>' +
+        '<td><b>' + id + '</b>' + (p.confident ? '' : '<span class="tag">位置が確かでない</span>') + (p.doubt ? '<span class="tag">正面が違うかも</span>' : '') + '</td>' +
+        '<td class="r">' + st + '</td></tr>';
+    }
+  }
+  el.innerHTML = h + '</table>';
+}
+
+function paintResults(){
+  const el = $('tp2'), ids = Object.keys(S.results);
+  if(!ids.length){ el.innerHTML = '<div class="hint">測り終えた配電盤と、測れなかった理由がここに並びます</div>'; return; }
+  const c = counts();
+  let h = '<div class="row mb"><span class="sm grow">測定済み <b>' + c.done + '</b> ・ 飛ばした <b>' + c.skip + '</b></span></div><table class="res"><tr><th>順</th><th>配電盤</th><th>結果</th></tr>';
+  ids.forEach((id,i)=>{ const r = S.results[id];
+    h += '<tr><td class="mono">' + (i+1) + '</td><td><b>' + id + '</b></td><td>' + (r[0]==='DONE' ? '<span class="pill ok">測定済み</span>'
+      : '<span class="pill ng">飛ばした</span> <span class="why">' + SKIP[r[1]] + '</span>') + '</td></tr>'; });
+  el.innerHTML = h + '</table>';
+}
+
+function paintDevices(){
+  const yes = t => '<span class="pill ok">' + t + '</span>', no = t => '<span class="pill ng">' + t + '</span>', mid = t => '<span class="pill">' + t + '</span>';
+  const arm = ARM==='none' ? mid('測定機構が付いていません') : ARM==='stowed' ? yes('格納位置') : no('読めません');
+  const lift = S.lift==='bottom' ? yes('下端') : (S.lift.includes('読めません') ? no(S.lift) : mid(S.lift));
+  const th = S.thLost ? no('通信できません') : (S.thReentry ? no('入り直しが要ります') : mid(TH_STATE[S.thState] || S.thState));
+  $('tp3').innerHTML = '<dl class="dev-kv">' +
+    '<dt>走行系</dt><dd>' + th + '</dd>' +
+    '<dt>昇降機</dt><dd>' + lift + '</dd>' +
+    '<dt>測定機構の腕</dt><dd>' + arm + '</dd>' +
+    '<dt>画像認識</dt><dd>' + mid(S.ss) + '</dd>' +
+    '<dt>配置図</dt><dd>' + (S.panels.length ? mid(S.panels.length + ' 面 ・ 見ていない方向あり') : mid('配電盤なし')) + '</dd>' +
+    '<dt>測定機能</dt><dd>' + (S.fkLost ? no('通信できません') : yes('通信できています')) + '</dd></dl>';
+}
+
+/* ================= 配置図（SVG。map フレーム → 画面。x 右・y 上） ================= */
+const K = 50, X0 = 0.1, Y1 = 9.6, W = 14.1, H = 10.1;
+const sx = x => (x - X0) * K, sy = y => (Y1 - y) * K;
+const pt = ([x,y]) => sx(x).toFixed(1) + ',' + sy(y).toFixed(1);
+function rectPts(p){ // 天面の矩形の 4 隅（n＝正面の外向き、u＝正面の辺の向き）
+  const n = [Math.cos(p.yaw), Math.sin(p.yaw)], u = [-n[1], n[0]];
+  const c = (a,b) => [p.x + n[0]*a*p.d/2 + u[0]*b*p.w/2, p.y + n[1]*a*p.d/2 + u[1]*b*p.w/2];
+  return {corners:[c(1,1),c(1,-1),c(-1,-1),c(-1,1)], front:[c(1,1),c(1,-1)], n, u};
+}
+function stand(p){ const n = [Math.cos(p.yaw), Math.sin(p.yaw)], r = p.d/2 + STAND_MIN; return {x:p.x+n[0]*r, y:p.y+n[1]*r, yaw:p.yaw+Math.PI}; }
+function square(cx,cy,yaw,half){ const c = Math.cos(yaw), s = Math.sin(yaw);
+  return [[1,1],[1,-1],[-1,-1],[-1,1]].map(([a,b])=>[cx + half*(a*c - b*s), cy + half*(a*s + b*c)]); }
+
+function paintMap(){
+  const svg = $('map'); svg.setAttribute('viewBox', '0 0 ' + (W*K) + ' ' + (H*K));
+  let g = '<defs><pattern id="hatch" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">' +
+    '<rect width="7" height="7" fill="#ffb74d14"/><line x1="0" y1="0" x2="0" y2="7" stroke="#ffb74d66" stroke-width="2.4"/></pattern>' +
+    '<pattern id="skiphatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(-45)">' +
+    '<rect width="6" height="6" fill="#4a1a1a"/><line x1="0" y1="0" x2="0" y2="6" stroke="#ef6b6855" stroke-width="2"/></pattern>' +
+    '<clipPath id="fl"><polygon points="' + FLOOR.map(pt).join(' ') + '"/></clipPath></defs>';
+  // 地図（/map）: 分かっている床・1 m の目盛り・塞がっている所。分からない所は背景のまま
+  g += '<polygon points="' + FLOOR.map(pt).join(' ') + '" fill="#3c424e"/>';
+  let grid = '';
+  for(let x=1;x<14;x++) grid += '<line x1="'+sx(x)+'" y1="0" x2="'+sx(x)+'" y2="'+(H*K)+'"/>';
+  for(let y=1;y<10;y++) grid += '<line x1="0" y1="'+sy(y)+'" x2="'+(W*K)+'" y2="'+sy(y)+'"/>';
+  g += '<g clip-path="url(#fl)" stroke="#48505e" stroke-width="1">' + grid + '</g>';
+  g += '<polyline points="' + ROOM.map(pt).join(' ') + '" fill="none" stroke="#c9ced8" stroke-width="6" stroke-linejoin="round"/>';
+  for(const [x,y,w,h] of OBST) g += '<rect x="'+sx(x)+'" y="'+sy(y+h)+'" width="'+(w*K)+'" height="'+(h*K)+'" fill="#c9ced8" rx="2"/>';
+  // 見ていない方向（全周を探した位置を中心に、ss の最大距離 5 m の扇。地図の範囲で切る）
+  if(S.panels.length){
+    for(const [a0,a1] of UNSEEN){ const R = 5;
+      const p0 = [ORIGIN.x + R*Math.cos(a0), ORIGIN.y + R*Math.sin(a0)], p1 = [ORIGIN.x + R*Math.cos(a1), ORIGIN.y + R*Math.sin(a1)];
+      g += '<path clip-path="url(#fl)" d="M'+pt([ORIGIN.x,ORIGIN.y])+' L'+pt(p0)+' A'+(R*K)+' '+(R*K)+' 0 0 0 '+pt(p1)+' Z" fill="url(#hatch)" stroke="#ffb74d99" stroke-width="1.5" stroke-dasharray="6 5"/>';
+      const am = (a0+a1)/2; g += '<text x="'+sx(ORIGIN.x+3.3*Math.cos(am))+'" y="'+sy(ORIGIN.y+3.3*Math.sin(am))+'" text-anchor="middle" fill="#ffcc80" font-size="13" font-weight="700" paint-order="stroke" stroke="#191c23" stroke-width="4">見ていない方向</text>';
+    }
+    g += '<g stroke="#ffcc80" stroke-width="2"><line x1="'+(sx(ORIGIN.x)-6)+'" y1="'+sy(ORIGIN.y)+'" x2="'+(sx(ORIGIN.x)+6)+'" y2="'+sy(ORIGIN.y)+'"/><line x1="'+sx(ORIGIN.x)+'" y1="'+(sy(ORIGIN.y)-6)+'" x2="'+sx(ORIGIN.x)+'" y2="'+(sy(ORIGIN.y)+6)+'"/></g>';
+  }
+  // いま向かっている配電盤の立ち位置
+  if(S.cur && ['LOWER','GOAL','PAUSED','RECHECK'].includes(S.phase)){
+    const st = stand(PBY[S.cur]);
+    g += '<polygon class="tgt-pulse" points="' + square(st.x,st.y,st.yaw,FOOT/2).map(pt).join(' ') + '" fill="none" stroke="#ffb74d" stroke-width="2.5" stroke-dasharray="7 5"/>';
+    g += '<line x1="'+sx(S.robot.x)+'" y1="'+sy(S.robot.y)+'" x2="'+sx(st.x)+'" y2="'+sy(st.y)+'" stroke="#ffb74d" stroke-width="2" stroke-dasharray="3 6" opacity=".7"/>';
+  }
+  // 配電盤（天面の矩形・正面の辺・ID・印）
+  const order = S.cur ? [S.cur, ...S.queue] : S.queue;
+  for(const id of S.panels){
+    const p = PBY[id], r = rectPts(p), res = S.results[id], on = S.sel.has(id) && canPick();
+    let fill = '#6a7383', bd = '#8b93a1', op = 1;
+    if(on){ fill = '#2c4a74'; bd = '#7fb4ee'; }
+    if(res && !on){ if(res[0]==='DONE'){ fill = '#1d4a25'; bd = '#6fcf76'; } else { fill = 'url(#skiphatch)'; bd = '#ef6b68'; } }
+    if(!res && !on && order.includes(id)){ fill = '#2c4a74'; bd = '#7fb4ee'; }
+    if(id===S.cur && S.phase!=='HALTED'){ fill = '#4a3410'; bd = '#ffb74d'; }
+    const dash = p.confident ? '' : ' stroke-dasharray="5 4"';
+    if(!p.confident && !on && !res) op = .6;
+    g += '<g class="pnl' + (canPick() ? ' pick' : '') + '"' + (canPick() ? ' onclick="toggle(\'' + id + '\')"' : '') + ' opacity="'+op+'">';
+    g += '<polygon class="body" points="' + r.corners.map(pt).join(' ') + '" fill="'+fill+'" stroke="'+bd+'" stroke-width="2"'+dash+'/>';
+    g += '<line x1="'+sx(r.front[0][0])+'" y1="'+sy(r.front[0][1])+'" x2="'+sx(r.front[1][0])+'" y2="'+sy(r.front[1][1])+'" stroke="#fff" stroke-width="4" stroke-linecap="round"/>';
+    const vert = Math.abs(r.n[0]) > .5;
+    g += '<text x="'+sx(p.x)+'" y="'+(sy(p.y)+4)+'" text-anchor="middle" fill="#fff" font-size="'+(vert?10:11.5)+'" font-weight="800" pointer-events="none"' +
+      (vert ? ' transform="rotate(-90 '+sx(p.x)+' '+sy(p.y)+')"' : '') + '>' + id + '</text>';
+    // 印（背面の右の角）: ✓ 選択 / 順番 / ✓ 済み / ✕ 飛ばした
+    const bx = p.x - r.n[0]*(p.d/2) + r.u[0]*(p.w/2), by = p.y - r.n[1]*(p.d/2) + r.u[1]*(p.w/2);
+    let badge = '';
+    if(res && !on) badge = res[0]==='DONE' ? ['#2c6b33','#8fd694','✓'] : ['#7a2a2a','#ff9b98','✕'];
+    else if(on) badge = ['#245089','#cfe3fa','✓'];
+    else if(order.includes(id)) badge = id===S.cur ? ['#7a5a20','#ffe0b0', runIndexOf(id)] : ['#245089','#cfe3fa', runIndexOf(id)];
+    if(badge) g += '<circle cx="'+sx(bx)+'" cy="'+sy(by)+'" r="10" fill="'+badge[0]+'" stroke="'+badge[1]+'" stroke-width="1.5"/>' +
+      '<text x="'+sx(bx)+'" y="'+(sy(by)+4.5)+'" text-anchor="middle" fill="#fff" font-size="12" font-weight="800" pointer-events="none">'+badge[2]+'</text>';
+    if(p.doubt){ const lx = p.x + r.n[0]*(p.d/2 + 0.2), ly = p.y + r.n[1]*(p.d/2 + 0.2);
+      g += '<circle cx="'+sx(lx)+'" cy="'+sy(ly)+'" r="8.5" fill="#3a2a10" stroke="#ffb74d" stroke-width="1.5"/>' +
+      '<text x="'+sx(lx)+'" y="'+(sy(ly)+4.5)+'" text-anchor="middle" fill="#ffcc80" font-size="12" font-weight="900" pointer-events="none">?</text>'; }
+    g += '</g>';
+  }
+  // 機体（th の地図と同じ三角＋機体の外形 0.55 m 角）
+  const rb = S.robot;
+  g += '<polygon points="' + square(rb.x,rb.y,rb.yaw,FOOT/2).map(pt).join(' ') + '" fill="#b3d5f733" stroke="#b3d5f7" stroke-width="1.5"/>';
+  const tri = [[0.36,0],[-0.16,0.17],[-0.16,-0.17]].map(([a,b])=>[rb.x + a*Math.cos(rb.yaw) - b*Math.sin(rb.yaw), rb.y + a*Math.sin(rb.yaw) + b*Math.cos(rb.yaw)]);
+  g += '<polygon points="' + tri.map(pt).join(' ') + '" fill="#b3d5f7" stroke="#0f1117" stroke-width="1"/>';
+  if(S.phase==='SURVEY'){
+    g += '<g style="transform-origin:'+sx(rb.x)+'px '+sy(rb.y)+'px;animation:sweep 3s linear infinite">' +
+      '<path d="M'+sx(rb.x)+','+sy(rb.y)+' L'+sx(rb.x+4.2)+','+sy(rb.y)+' A'+(4.2*K)+' '+(4.2*K)+' 0 0 0 '+sx(rb.x+4.2*Math.cos(0.5))+','+sy(rb.y+4.2*Math.sin(0.5))+' Z" fill="#7fb4ee22"/></g>';
+  }
+  // 縮尺
+  g += '<g transform="translate(14,'+(H*K-14)+')"><line x1="0" y1="0" x2="'+K+'" y2="0" stroke="#e6e8ec" stroke-width="2"/>' +
+    '<line x1="0" y1="-5" x2="0" y2="0" stroke="#e6e8ec" stroke-width="2"/><line x1="'+K+'" y1="-5" x2="'+K+'" y2="0" stroke="#e6e8ec" stroke-width="2"/>' +
+    '<text x="'+(K/2)+'" y="-7" text-anchor="middle" fill="#e6e8ec" font-size="11">1 m</text></g>';
+  svg.innerHTML = g;
+  let mb = '';
+  if(S.phase==='SURVEY') mb = '周りの配電盤を探しています（全周）';
+  else if(S.surveyWhy) mb = SURVEY_WHY[S.surveyWhy] + '。「もう一度探す」で探し直せます';
+  if(S.fkLost) mb = '最後に受け取った配置図です';
+  $('mapBanner').textContent = mb;
+  $('mapVeil').classList.toggle('show', S.phase==='REENTRY');
+}
+
+/* ================= 操作（モックアップの中だけで遷移させる。実装では機能側へ auto.* を送るだけ） ================= */
+function toggle(id){ if(!canPick()) return; S.sel.has(id) ? S.sel.delete(id) : S.sel.add(id); render(); }
+function selAll(on){ if(!canPick()) return; S.sel = on ? new Set(S.panels) : new Set(); render(); }
+function selRow(row){ const ids = S.panels.filter(id=>PBY[id].row===row); const all = ids.every(id=>S.sel.has(id));
+  ids.forEach(id=> all ? S.sel.delete(id) : S.sel.add(id)); render(); }
+function onNext(){
+  if($('nextAct').classList.contains('info')) return;
+  if(S.phase==='FINISH' && !S.sel.size){ S.sel = new Set(skipped()); selectTab('tp1'); render(); return; }
+  if(!S.sel.size) return reject(REJECT.bad_argument + '。');
+  // auto.start（選んだ盤）。回る順は機能側が決める（order_panels）。ここでは同じ決め方をまねる
+  const order = orderPanels([...S.sel], S.robot);
+  for(const id of order) delete S.results[id];      // 選び直した盤は測り直す
+  S.run = {ids: order, done: []}; S.cur = order[0]; S.queue = order.slice(1); S.sel = new Set();
+  S.thReject = ''; S.gate = ''; S.lastStep = 3; clearArmed(); enter('LOWER', 'WAIT'); selectTab('tp1'); render();
+}
+function onStop(){ S.from = S.phase; S.phase = 'PAUSED'; S.pauseWhy = 'stop'; S.thState = 'PAUSE'; render(); }
+function onRun(){
+  if(S.phase!=='PAUSED') return;
+  // 機能側の決まり: GOAL・AT_PANEL は続きから、ほかは段の頭から（-auto.md §2.2）
+  const back = S.from || 'GOAL'; S.phase = back; S.thState = back==='GOAL' ? 'NAV' : 'WAIT';
+  if(back!=='GOAL' && back!=='AT_PANEL') S.tp = 0;
+  render();
+}
+function onRescan(){ scene('SURVEY'); setTimeout(()=>{ if(S.phase==='SURVEY') scene('SELECT'); }, 2500); }
+function onAbort(){
+  if(armedAbort === null){ armedAbort = 10; tickArmed(); return paintTour(); }
+  // 中止: 止めて盤の選択に戻る。測り終えた盤の結果は残し、中止で外れた盤は結果を残さない
+  clearArmed(); S.cur = ''; S.queue = []; S.run = null; S.sel = new Set(); S.lastStep = 2; enter('SELECT', 'WAIT'); render();
+}
+let armTimer = null;
+function tickArmed(){ clearInterval(armTimer); armTimer = setInterval(()=>{ armedAbort--; if(armedAbort <= 0) clearArmed(); paintTour(); }, 1000); }
+function clearArmed(){ clearInterval(armTimer); armTimer = null; armedAbort = null; }
+function reject(m){ $('wrBody').textContent = m; openWin('winReject'); }
+
+/* ================= 模擬（モックアップだけ。実装では機能側の AutoState が進める） =================
+   段の進み方は -auto.md §2.1: LOWER → GOAL（走る → 向きを合わせる）→ RECHECK → AT_PANEL → 次の盤の LOWER …→ FINISH。
+   立ち位置が塞がっていれば飛ばす（stand_blocked）、位置が確かでない盤は認識し直して見つからず飛ばす（top_not_found）、
+   測定機構なしなら盤前の作業を飛ばす（no_mechanism）。速さは見やすさのため実機より速い */
+const SIM_DT = 100, SIM_SPEED = 1.5;
+let simOn = true;
+function enter(phase, thState){ S.phase = phase; S.tp = 0; if(thState) S.thState = thState; }
+function orderPanels(ids, from){   // 近い列から。列の中は正面に向かって右から（-auto.md §3 order_panels）
+  const rows = {}; for(const id of ids){ (rows[PBY[id].row] ||= []).push(id); }
+  const right = id => { const p = PBY[id]; return -Math.sin(p.yaw)*p.x + Math.cos(p.yaw)*p.y; };
+  const left = Object.values(rows); left.forEach(r => r.sort((a,b) => right(b) - right(a)));
+  const out = []; let pos = {x:from.x, y:from.y};
+  const dist = r => Math.min(...r.map(id => Math.hypot(PBY[id].x - pos.x, PBY[id].y - pos.y)));
+  while(left.length){ left.sort((a,b) => dist(a) - dist(b)); const r = left.shift(); out.push(...r); const q = PBY[r[r.length-1]]; pos = {x:q.x, y:q.y}; }
+  return out;
+}
+function standBlocked(st){ const h = FOOT/2; return OBST.some(([x,y,w,hh]) => st.x+h > x && st.x-h < x+w && st.y+h > y && st.y-h < y+hh); }
+const lerpAngle = (a, b, k) => a + Math.atan2(Math.sin(b-a), Math.cos(b-a)) * k;
+function finishPanel(res){
+  S.results[S.cur] = res; S.run.done.push(S.cur);
+  if(S.queue.length){ S.cur = S.queue.shift(); enter('LOWER', 'WAIT'); }
+  else { S.cur = ''; enter('FINISH', 'WAIT'); S.lastStep = 4; selectTab('tp2'); }
+  render();
+}
+function simTick(){
+  if(!simOn || estop || S.fkLost || !S.run || !['LOWER','GOAL','RECHECK','AT_PANEL'].includes(S.phase)) return;
+  S.tp += SIM_DT;
+  switch(S.phase){
+    case 'LOWER':
+      if(S.gate){ if(S.tp >= 2500){ S.gate = ''; S.lift = 'bottom'; S.ss = '待機'; S.tp = 0; render(); } return; }
+      if(S.tp < 600) return;
+      S.lift = 'bottom';
+      if(standBlocked(stand(PBY[S.cur]))) return finishPanel(['SKIPPED','stand_blocked']);   // 立てないので目的地を出さない
+      enter('GOAL', 'NAV'); S.alignAt = null; return render();
+    case 'GOAL': {
+      const st = stand(PBY[S.cur]), rb = S.robot, dx = st.x - rb.x, dy = st.y - rb.y, d = Math.hypot(dx, dy), step = SIM_SPEED * SIM_DT / 1000;
+      if(d > step && S.alignAt == null){ rb.x += dx/d*step; rb.y += dy/d*step; rb.yaw = Math.atan2(dy, dx); return paintMap(); }
+      if(S.alignAt == null){ rb.x = st.x; rb.y = st.y; S.alignAt = S.tp; S.alignFrom = rb.yaw; S.thState = 'ALIGN'; paintDevices(); }
+      const k = Math.min(1, (S.tp - S.alignAt) / 500); rb.yaw = lerpAngle(S.alignFrom, st.yaw, k); paintMap();
+      if(k >= 1){ enter('RECHECK', 'WAIT'); render(); }
+      return;
+    }
+    case 'RECHECK':
+      if(S.tp < 900) return;
+      if(!PBY[S.cur].confident) return finishPanel(['SKIPPED','top_not_found']);
+      enter('AT_PANEL', 'WAIT'); return render();
+    case 'AT_PANEL':
+      if(S.tp < 1400) return;
+      return finishPanel(ARM==='none' ? ['SKIPPED','no_mechanism'] : ['DONE']);
+  }
+}
+setInterval(simTick, SIM_DT);
+
+/* 終了: 腕が格納位置か測定機構なしなら普通の確認、そうでなければ腕の確認（th と同じ文言） */
+function onExit(){
+  const foot = (danger, label) => '<button class="btn" onclick="closeWin(\'winExit\')">やめる</button><button class="btn ' + danger + '" onclick="closeWin(\'winExit\')">' + label + '</button>';
+  if(S.fkLost){
+    $('wxTitle').textContent = '測定機能と通信できません';
+    $('wxBody').textContent = '走行系の画面の「自律測定を終了」で抜けてください。';
+    $('wxFoot').innerHTML = foot('primary', '走行系の画面へ');
+  } else if(ARM==='unknown'){
+    $('wxTitle').textContent = '測定機構の腕が格納位置にあることを確かめましたか';
+    $('wxBody').textContent = 'メインメニューへ戻ると、手動で機体を動かせるようになります。';
+    $('wxFoot').innerHTML = foot('danger', 'メインメニューへ');
+  } else {
+    $('wxTitle').textContent = '自律測定を終了しますか';
+    $('wxBody').textContent = (isRunning() || S.phase==='PAUSED') ? '機体を止めて、走行系のメインメニューへ戻ります。' : '走行系のメインメニューへ戻ります。';
+    $('wxFoot').innerHTML = foot('danger', 'メインメニューへ');
+  }
+  openWin('winExit');
+}
+function setArm(a){ ARM = a; ['armB0','armB1','armB2'].forEach((id,i)=>$(id).classList.toggle('on', ['none','stowed','unknown'][i]===a)); render(); }
+
+/* th の異常（W-1）と非常停止。選択肢は th の決まり（自律測定: 解決したら「確認」1 択 → 一時停止） */
+function raiseFault(){
+  fault = {label:'LiDAR 途絶', resolved:false}; faultHidden = false;
+  if(isRunning()){ S.from = S.phase; S.phase = 'PAUSED'; S.pauseWhy = 'fault'; S.thState = 'PAUSE'; }
+  $('wfTitle').textContent = '⚠ 異常が発生しました'; $('winFault').classList.remove('resolved');
+  $('wfBody').innerHTML = '<b>LiDAR 途絶</b> ― LiDAR のデータが届いていません。ケーブルと電源を確かめてください。<div class="hint mt">解決すると、この画面が再開の選択肢に変わります。</div>';
+  $('wfFoot').innerHTML = '<button class="btn" onclick="hideFault()">非表示</button>';
+  openWin('winFault'); render();
+}
+function resolveFault(){
+  if(!fault) raiseFault();
+  fault.resolved = true; faultHidden = false;
+  $('winFault').classList.add('resolved'); $('wfTitle').textContent = '✓ 異常が解決しました';
+  $('wfBody').innerHTML = '自律測定の一時停止に戻ります。<div class="sm mut mt">走り出すには、この画面の「走行」を押します。</div>';
+  $('wfFoot').innerHTML = '<button class="btn primary" onclick="ackFault()">確認</button>';
+  openWin('winFault'); render();
+}
+function ackFault(){ fault = null; closeWin('winFault'); render(); }
+function hideFault(){ faultHidden = true; closeWin('winFault'); render(); }
+function reshowFault(){ faultHidden = false; openWin('winFault'); render(); }
+function onEstop(){
+  if(estop) return;
+  estop = true; if(isRunning()){ S.from = S.phase; S.phase = 'PAUSED'; S.pauseWhy = 'estop'; S.thState = 'PAUSE'; }
+  $('release').classList.add('show'); $('demo').classList.add('shift');
+  $('winEstop').classList.remove('resolved'); $('weTitle').textContent = '⚠ 非常停止中';
+  $('weBody').innerHTML = '非常停止ボタンが押されました。速度指令をゼロにしています。<div class="hint mt">解除は画面下端の解除バーから。解除すると元のモードの再開を選べます。</div>';
+  $('weFoot').innerHTML = '<button class="btn" onclick="closeWin(\'winEstop\')">非表示</button>';
+  openWin('winEstop'); render();
+}
+function releaseEstop(){
+  estop = false; $('release').classList.remove('show'); $('demo').classList.remove('shift');
+  $('winEstop').classList.add('resolved'); $('weTitle').textContent = '✓ 非常停止を解除しました';
+  $('weBody').innerHTML = '<b>自律測定</b>に戻ると、停止した状態から再開できます。<div class="sm mut mt">走り出すには、戻ったあとでもう一度「走行」を押します。</div>';
+  $('weFoot').innerHTML = '<button class="btn" onclick="closeWin(\'winEstop\')">メインメニューへ</button><button class="btn primary" onclick="closeWin(\'winEstop\')">元のモードに戻る</button>';
+  openWin('winEstop'); render();
+}
+
+/* ================= 共通（th と同じ） ================= */
+function openWin(id){ $(id).classList.add('show'); syncOverlay(); }
+function closeWin(id){ $(id).classList.remove('show'); syncOverlay(); }
+function syncOverlay(){ $('overlay').classList.toggle('has-modal', !!document.querySelector('#overlay .win.show')); }
+function selectTab(t){ document.querySelectorAll('.subtabs .tab').forEach(b=>b.classList.toggle('on', b.dataset.t===t));
+  document.querySelectorAll('.subtabs .tabpane').forEach(p=>p.classList.toggle('on', p.id===t)); }
+/* 固定の論理サイズで描いて等倍で拡大する（th shell/FixedStage.jsx・stageMetrics.js と同じ） */
+let PV = 'auto';
+function pv(m){ PV = m; ['pvA','pvL','pvP'].forEach((id,i)=>$(id).classList.toggle('on', ['auto','landscape','portrait'][i]===m)); fitStage(); }
+function fitStage(){
+  const vw = innerWidth, vh = innerHeight;
+  const o = PV==='auto' ? (vw >= vh ? 'landscape' : 'portrait') : PV;
+  const [w,h] = o==='landscape' ? [1280,720] : [960,1280];
+  const st = $('stage'); st.dataset.orientation = o;
+  st.style.setProperty('--stage-w', w + 'px'); st.style.setProperty('--stage-h', h + 'px');
+  st.style.setProperty('--stage-scale', Math.min(vw / w, vh / h));
+}
+addEventListener('resize', fitStage);
+const q = new URLSearchParams(location.search);   // スクリーンショット用: ?scene=GOAL&pv=portrait&demo=0&win=fault&arm=unknown
+if(q.get('demo')==='0') $('demo').style.display = 'none';
+pv(q.get('pv') || 'auto');
+if(q.get('sim')==='0') simOn = false;   // スクリーンショット用に止める
+setArm(q.get('arm') || 'stowed');
+scene(q.get('scene') || 'SELECT');
+if(q.get('win')==='fault') raiseFault();
+if(q.get('win')==='estop') onEstop();
+if(q.get('win')==='exit') onExit();
+</script>
+</body>
+</html>

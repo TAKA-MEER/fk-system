@@ -31,7 +31,7 @@
 | もの | 置き場所 | 通り道 |
 | --- | --- | --- |
 | 機能側（`fk_auto`） | th と同じ PC の**別コンテナ `fk_robot`**。`--network host`・`ROS_DOMAIN_ID` 10・FastDDS は UDP だけ | th とは ROS 2 で直接（th [DetailedDesign-measure.md](../../../../th-system/docs/plan/detailed/DetailedDesign-measure.md) §1）。**UDP だけのプロファイルと型は th のリポジトリ（`../th-system`）のものをコンテナに入れて使い、写さない** |
-| 画面（`fk_web`） | 同じコンテナから静的に配信（ポートは -names.md §6） | **本システムの rosbridge**（別ポート）: 機能側への指示・状態・配置図・結果。**th の rosbridge（9090）**: 在席 `/ui/active_screen`・非常停止 `/safety/estop_ui`・ヘッダーと異常ウィンドウ（th DetailedDesign-measure.md §4） |
+| 画面（`fk_web`） | 同じコンテナから静的に配信（ポートは -names.md §6） | **本システムの rosbridge**（別ポート）: 機能側への指示・状態・配置図・結果。**th の rosbridge（9090）**: 在席 `/ui/active_screen`・非常停止 `/safety/estop_ui`・ヘッダーと異常ウィンドウ（th DetailedDesign-measure.md §4）・配置図に重ねる機体の位置と地図。一覧は [-web.md](DetailedDesign-web.md) §1.1 |
 | 昇降機（hve-system の昇降部） | — | **カメラモジュールと同じ WS の口に、名前 `fk` で繋ぐ**（hve が書き本システムが確かめる。2026-11-05。案は hve-system [DetailedDesign-protocol-modules.md](../../../../hve-system/docs/plan/detailed/DetailedDesign-protocol-modules.md)）。**hve の実装が入るまで案の名前で実装しない。今の昇降部は本システムの接続の上昇に天井を見ないので、それまで上昇させない** |
 | ss-system | 同じ PC の ss のコンテナ | **ROS 2 で直接**（設定は本システムと同じ。2026-11-05 ss のユーザー決定）。ss のアクション（依頼・取り消し・結果）・後片付けの完了・状態の 3 つ。**名前と形は ss が書き、2026-11-05 に確かめた**（[-names.md](DetailedDesign-names.md) §1）。**ss の状態が `IDLE` でない間は、本システム以外の依頼でも ss が動かしているとみなす**（§4.1） |
 
@@ -186,7 +186,7 @@ th の 8-g（th 側の実装）が入ったら、`fake_th` との差を本物の
 | **WP-AUTO-01** 土台 | コンテナ `fk_robot`・th の型と UDP プロファイルの取り込み・`fk_msgs`・`auto_runner` の骨（生存確認・状態の購読・版の照合）・`fake_th` | **th の型**（th の作業ブランチ `feat/era3-measure` の `a33dd9a`） | `fake_th` 相手に、生存確認が届き、版が食い違えば拒否される。**変異: 状態機械が止まったかの確かめ（`runner_stall_ms`）を壊すと、生存確認が止まらず試験が落ちる** |
 | **WP-AUTO-02** 純関数 | §3・§4 の関数と試験 | — | ホストで全関数の試験が通る |
 | **WP-AUTO-03** 状態機械 | §2 を偽の口で。測定機構なしの道で 1 盤・複数盤・飛ばす・止める・一時停止・入り直し | 01・02 | `fake_th` 相手に、選んだ盤を回り切って結果の一覧が出る。**変異: 関門を通さずに送る道・表に無い指示を出す道・`drive_watch` の結果を捨てる道を作ると、試験が落ちる** |
-| **WP-AUTO-04** 画面 | 配置図と地図の表示・盤の選択と「開始」・「停止」「走行」「中止」「もう一度探す」「終了」（腕の確認つき）・結果の一覧・在席（S-60／S-21）・非常停止・ヘッダー | 03 | ブラウザから `fake_th` 相手に一通り操作できる |
+| **WP-AUTO-04** 画面 | 配置図と地図の表示・盤の選択と「開始」・「停止」「走行」「中止」「もう一度探す」「終了」（腕の確認つき）・結果の一覧・在席（S-60）・非常停止・ヘッダー。**詳しくは [-web.md](DetailedDesign-web.md)**（2026-11-12 案。お立会試験の `S-21` は測定機構の設計のあと）。**画面のほか `fk_msgs`（`AutoState`・`Layout` に欄を足す）・`runner`・`auto_runner`・`fk_sim`（試験用の起動）・Dockerfile（rosbridge）にも手を入れる** | 03 | ブラウザから `fake_th` 相手に一通り操作できる（[-web.md](DetailedDesign-web.md) §7） |
 | **WP-AUTO-05** 昇降機の口 | `LiftPort` の本物 | 01・**hve の実装が実機に入るまで** | 実機の昇降部で、状態を読み、下端まで下げられる |
 | **WP-AUTO-06** ss の口 | `SsPort` の本物 | 01（ss の型は ss `cf23438` で入った） | ss 相手に配置図ができる |
 

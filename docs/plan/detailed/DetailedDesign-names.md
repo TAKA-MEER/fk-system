@@ -5,7 +5,7 @@
 > **`DD-1`**: 名前を発明する余地をゼロにする。必要な名前が無いと分かったら、
 > **実装する前にこのファイルへ行を足す。**
 
-**2026-11-04: 自律測定の移動（[-auto.md](DetailedDesign-auto.md)）の名前を足した。**接頭辞・名前空間・ポート・コンテナ名（§0・§6）は **2026-11-05 ユーザー承認**。
+**2026-11-04: 自律測定の移動（[-auto.md](DetailedDesign-auto.md)）の名前を足した。** **2026-11-12: 画面（[-web.md](DetailedDesign-web.md)）の名前を足した（案。「案」と書いた行はユーザーの確認待ち）。**接頭辞・名前空間・ポート・コンテナ名（§0・§6）は **2026-11-05 ユーザー承認**。
 
 ---
 
@@ -44,8 +44,8 @@
 | --- | --- |
 | `fk_msgs` | 本システムの型（§4） |
 | `fk_auto` | 自律測定の移動。モジュール `fk_auto.core`（純関数）・`fk_auto.ports`（口）・`fk_auto.runner`（状態機械）。ノード **`auto_runner`** |
-| `fk_sim` | 試験用。ノード **`fake_th`**（th の約束どおりに振る舞う偽の th） |
-| `fk_web` | 本システムの画面（静的ファイル） |
+| `fk_sim` | 試験用。ノード **`fake_th`**（th の約束どおりに振る舞う偽の th）。**案**: ノード **`auto_runner_sim`**（`auto_runner` に偽の昇降機・偽の ss・測定機構なしの口を渡して起こす。画面を通して動かす試験と手で試す用。本番の起動には入れない。[-web.md](DetailedDesign-web.md) §1.4） |
+| `fk_web` | 本システムの画面（React・Vite。[-web.md](DetailedDesign-web.md)。ROS 2 のパッケージではなく、ビルドした静的ファイルを `fk_robot` から配信する） |
 | `fk_bringup` | launch と設定（`params.yaml`） |
 
 | Python の名前 | 意味 |
@@ -81,9 +81,9 @@ th 側の名前（`/measure/*`・`/map`・`/ui/active_screen`・`/safety/estop_u
 | 型 | 中身 |
 | --- | --- |
 | `AutoCommand.srv` | `string command` / `string[] panel_ids`（`auto.start` だけ）/ `bool arm_confirmed`（`auto.finish` だけ。画面で腕の確認が済んだ）→ `bool accepted` / `string reject_reason` |
-| `AutoState.msg` | `std_msgs/Header header` / `string phase` / `string panel_id`（いま向かっている・作業中の盤）/ `string[] queue`（残りの順）/ `string halt_reason` / `string gate_reason`（関門で止めている理由。無ければ空）/ `bool lift_at_bottom` / `bool lift_readable` / `bool arm_stowed` / `bool mechanism_attached` / `bool reentry_required` / `string th_mode` / `string th_state` / `string th_reject_reason`（th が最後に指示を拒否した理由。th の理由キーのまま。無ければ空。2026-11-11 に足した。**th の `/measure/command` が見えない・応答が得られないときは、本システムが `th_unreachable` を入れる**） |
+| `AutoState.msg` | `std_msgs/Header header` / `string phase` / `string panel_id`（いま向かっている・作業中の盤）/ `string[] queue`（残りの順）/ `string halt_reason` / `string gate_reason`（関門で止めている理由。無ければ空）/ `bool lift_at_bottom` / `bool lift_readable` / `bool arm_stowed` / `bool mechanism_attached` / `bool reentry_required` / `string th_mode` / `string th_state` / `string th_reject_reason`（th が最後に指示を拒否した理由。th の理由キーのまま。無ければ空。2026-11-11 に足した。**th の `/measure/command` が見えない・応答が得られないときは、本システムが `th_unreachable` を入れる**）/ **案**: `bool goal_valid` / `float64 goal_x` / `float64 goal_y` / `float64 goal_yaw`（いま向かっている立ち位置。`meas.goal` に出したもの。map フレーム。向かっていなければ `goal_valid` が false。画面の配置図に出す。2026-11-12 [-web.md](DetailedDesign-web.md) §8） |
 | `Panel.msg` | `string panel_id` / `float64 x` / `float64 y`（天面の中心。map フレーム [m]）/ `float64 front_yaw`（正面の向き。盤から外向き [rad]）/ `float32 width_m` / `float32 depth_m` / `float32 top_height_m` / `float32 pos_std_m` / `float32 yaw_std_deg` / `int32 lugs`（ss の確からしさ。使った吊り金具の数。ss の名前に揃えた）/ `bool confident`（しきい値を満たすか）/ `bool ss_front_known`（ss が「正面が分かっている」と返した）/ `float64 ss_front_yaw`（そのときの ss の正面の向き。参考）/ `bool front_doubt`（ss の正面と、機体に向いていた辺が違う）/ `string row_id` |
-| `Layout.msg` | `std_msgs/Header header` / `string map_instance_id` / `Panel[] panels` / `float32[] unseen_from_rad` / `float32[] unseen_to_rad`（見ていない方向。map フレーム。ss が返す「実際に見た方位角の範囲」の残り）/ `string survey_reason`（配置図が空・途中で終わった理由。ss が返した終わり方（ss names §3 の `reason`。`completed` のときは空）のまま。結果が来ない・使える結果が得られないときは `ss_failed`。2026-11-11 に足した） |
+| `Layout.msg` | `std_msgs/Header header` / `string map_instance_id` / `Panel[] panels` / `float32[] unseen_from_rad` / `float32[] unseen_to_rad`（見ていない方向。map フレーム。ss が返す「実際に見た方位角の範囲」の残り）/ `string survey_reason`（配置図が空・途中で終わった理由。ss が返した終わり方（ss names §3 の `reason`。`completed` のときは空）のまま。結果が来ない・使える結果が得られないときは `ss_failed`。2026-11-11 に足した）/ **案**: `float64 survey_x` / `float64 survey_y`（全周を ss に依頼した時点の機体の位置。map フレーム。見ていない方向の扇の中心。2026-11-12 [-web.md](DetailedDesign-web.md) §8） |
 | `PanelResult.msg` | `string panel_id` / `string result`（`DONE` / `SKIPPED`）/ `string reason` |
 | `PanelResults.msg` | `std_msgs/Header header` / `PanelResult[] results` |
 
@@ -180,6 +180,11 @@ th 側の名前（`/measure/*`・`/map`・`/ui/active_screen`・`/safety/estop_u
 | コンテナ | `fk_robot` | 2026-11-05 ユーザー承認（th の `th_robot` に揃えた） |
 | `fk_rosbridge_port` | 9091 | 2026-11-05 ユーザー承認（th の 9090 と分ける。WP-AUTO-01 で th が使うポートと重ならないことを確かめる） |
 | `fk_web_port` | 8091 | 2026-11-05 ユーザー承認（同上） |
+| `th_rosbridge_port` | 9090 | 先方（th の rosbridge。th `th_bringup/launch/bringup.launch.py`）。画面がつなぐ（[-web.md](DetailedDesign-web.md) §1.1） |
+| `th_web_port` | 5173 | 先方（th の画面。th `README.md`）。「終了」のあと移る先 |
+| 画面の接続先の上書き（試験用） | URL の問い合わせ `fk_rosbridge_port`・`th_rosbridge_port`・`th_web_port`（値はポート番号）。無ければ上の値。ホストは `location.hostname` | 2026-11-12（[-web.md](DetailedDesign-web.md) §1.1・§7） |
+| 画面の在席の申告 | `screen_id` は `S-60`、`client_id` は `fk-` ＋ 乱数 | 先方（th DetailedDesign-measure.md §4） |
+| 試験用のポート（`sim.launch.py` の引数 `th_rosbridge_port`・`fk_rosbridge_port`・`web_port`） | 19090・19091・18091 | **案**・暫定（実機の 9090・9091・8091 と分ける。th の実機が同じ PC で動いていても混線しない） |
 | ワークスペース | リポジトリの `fk_ws/`（`fk_ws/src/<パッケージ>`） | 2026-11-05 ユーザー承認（th の `th_ws/` に揃えた） |
 | th の型と UDP プロファイル | `../th-system` の `th_ws/src/th_system_msgs` と `th_ws/scripts/vibe_measure/fastdds_udp.xml` を、**`fk_ws/th_ref` に書いたコミットから**取り出して使う（§7。写してコミットしない。th の作業ツリーの今のブランチに頼らない。2026-11-11） | th DetailedDesign-measure.md §1 |
 | `ROS_DOMAIN_ID`（試験） | 78 | 暫定（2026-11-11。実機の 10 と、th の試験が使う 77 と分ける。th `CLAUDE.md` 2026-09-23） |
@@ -207,4 +212,9 @@ th 側の名前（`/measure/*`・`/map`・`/ui/active_screen`・`/safety/estop_u
 | `fk_ws/src/fk_sim/fk_sim/fake_th.py` | ノード `fake_th`（クラス `FakeThNode`。振る舞いは `fk_auto.fakes.ThModel`） | 入れる |
 | `fk_ws/src/fk_sim/test/` | `fake_th` を相手に ROS 2 で通す結合試験（コンテナの中で回す） | 入れる |
 | `fk_ws/src/fk_bringup/config/params.yaml` | §5 の値（ノード名 `auto_runner` の下） | 入れる |
-| `fk_ws/src/fk_bringup/launch/fk.launch.py` | 実機用の起動（`auto_runner`） | 入れる |
+| `fk_ws/src/fk_bringup/launch/fk.launch.py` | 実機用の起動（`auto_runner`。**案**: 本システムの rosbridge（`fk_rosbridge_port`）・画面の配信（`fk_web_port`）も） | 入れる |
+| `fk_ws/src/fk_web/` | **案**。画面（`package.json`・`vite.config.js`・`index.html`・`COLCON_IGNORE`・`src/`・`test/unit/`・`e2e/`）。ホストでビルドし、`dist/` をコンテナから配信する（[-web.md](DetailedDesign-web.md) §1.4）。`src/view/` は表示を決める純関数、`src/parts/` は描画、`src/ros/` は rosbridge のつなぎ、`src/i18n/` は文言（[-web.md](DetailedDesign-web.md) §1.3） | 入れる（`node_modules/`・`dist/` は入れない） |
+| `fk_ws/th_import/web/` | **案**。取り込み先: th の画面の部品（[-web.md](DetailedDesign-web.md) §1.2 の表。`import_th.sh` が `th_ref` のコミットから取り出す）。`fk_web` は別名 `@th` で読む | **入れない**（`.gitignore`） |
+| `docs/plan/detailed/mockup/index.html` | 画面のモックアップ（見た目の正。th の CSS を `th_ref` のコミットから写してある。写しはここだけ） | 入れる |
+| `fk_ws/src/fk_sim/launch/sim.launch.py` | **案**。試験用の起動（`auto_runner_sim`・`fake_th`・rosbridge 2 本・画面の配信を試験用のポートで。[-web.md](DetailedDesign-web.md) §1.4） | 入れる |
+| 画面の試験の様子の差し込み | **案**。Playwright の試験で `window.__fkTestState` に様子を入れると、rosbridge につながずに描く（th の `__thTestState` と同じ形） | — |
