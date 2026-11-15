@@ -114,6 +114,7 @@ class _SsJob:
     request_id: Optional[str] = None
     sent_ms: float = 0.0
     cleanup_started_ms: float = 0.0
+    result_ms: Optional[float] = None   # 結果を受けた時刻（後片付けの上限の起点。届き直したら数え直す）
     th_req: Optional[core.ThStatus] = None
     waited: bool = True                 # 依頼のあいだ状態がずっと WAIT（ss_result_valid へ渡す）
     attempt: int = 0
@@ -422,7 +423,7 @@ class Runner:
             job = self._job
             for r in self._ss.poll_results():
                 if job is not None and job.request_id == r.request_id:
-                    job.result = r
+                    job.result, job.result_ms = r, snap.now_ms
             for c in self._ss.poll_cleanups():
                 if job is not None and job.request_id == c.request_id:
                     job.cleanup = c
@@ -656,6 +657,8 @@ class Runner:
 
     def _do_paused(self, snap):
         th = self._th_fresh(snap)
+        if self._paused_cause == "ss_pose":
+            self._gate_reason = "camera_pose_unknown"     # 止まっている間ずっと出す
         if self._paused_cause == "th":
             if th is not None and th.state != "PAUSE":
                 self._resume()                # th が走り出した（人の「走行」の meas.start が通った）
@@ -693,7 +696,7 @@ class Runner:
                 return None                   # 出せなかった（関門）。出せるまで待つ
             job.request_id, job.sent_ms, job.th_req = rid, now, snap.th
             job.waited, job.stage = True, "await_result"
-            job.result = job.cleanup = None
+            job.result = job.cleanup = job.result_ms = None
             return None
         # 出したあと: 状態の通り道・th の状態を見張る
         if not core._ss_readable(snap, p):
@@ -713,7 +716,9 @@ class Runner:
             else:
                 return None
         if job.cleanup is None:
-            if now - job.cleanup_started_ms > p.ss_cleanup_timeout_s * 1000.0:
+            if now > core.ss_cleanup_deadline_ms(
+                    job.result_ms, job.result.cleanup_limit_s if job.result is not None else None,
+                    job.cleanup_started_ms, p.ss_cleanup_margin_s, p.ss_cleanup_timeout_s):
                 self._halt(core.classify_halt(HaltEvent.SS_CLEANUP_NOT_DONE))
             return None
         if job.cleanup.reason == "human_override" or (
@@ -835,6 +840,13 @@ class Runner:
         res = done.result
         if res.reason == "camera_too_low":
             self._skip(SkipEvent.CAMERA_TOO_LOW)
+            return
+        if res.reason == "ceiling_unknown":
+            self._skip(SkipEvent.CEILING_UNKNOWN)
+            return
+        if res.reason == "camera_pose_unknown":
+            self._pause("ss_pose")                    # 後片付けは済んでいる。飛ばさず、人の「走行」で頭から
+            self._gate_reason = "camera_pose_unknown"
             return
         req = Pose(done.th_req.x, done.th_req.y, done.th_req.yaw)
         mp = core.to_map(res.panels, req, res.seen_from_rad, res.seen_span_rad)
