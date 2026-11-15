@@ -34,7 +34,7 @@
 
 | hve-system（昇降部） | hve [DetailedDesign-names.md](../../../../hve-system/docs/plan/detailed/DetailedDesign-names.md)（2026-11-05 に案から移された）と [DetailedDesign-protocol-modules.md](../../../../hve-system/docs/plan/detailed/DetailedDesign-protocol-modules.md)。作業パケットは hve の段階 6（`WP-LIFT-13`・`14` ほか）。今の実物は hve [DetailedDesign-protocol.md](../../../../hve-system/docs/plan/detailed/DetailedDesign-protocol.md) §2。`busy_label` は UTF-8 で 48 バイトまで（超えると無しの扱い）。本システムは名前 `fk`・`operator: auto`・`busy_label`「測定操作中」で繋ぐ | **2026-11-05 本システムが確かめた。**頼み（測定機構の欄は分からないとき `null`）は hve が反映（hve `6411a6f`）。ss も確かめ、hve が作業パケットに切った（hve `2f415d3`・`7a5fe5a`）。**hve が実機に入れたと知らせるまで、この名前で実装しない・今の昇降部で上昇させない**（hve の指示） |
 
-| ss-system | ss [DetailedDesign-locate.md](../../../../ss-system/docs/plan/detailed/DetailedDesign-locate.md)（口の振る舞い）と ss [DetailedDesign-names.md](../../../../ss-system/docs/plan/detailed/DetailedDesign-names.md) §0・§3（名前）。アクション・後片付けの完了・状態の 3 つ。型は ss の `ss_ws/src/ss_msgs` を読み取り専用で取り込み、版は状態の `interface_version` で照合する | **2026-11-05 本システムが確かめ、ss が記録した**（ss `9cd9764`）。ss の後片付けの上限は暫定 30 s（結果を返してから数える）。**型 `ss_msgs` は ss の `main` に入った**（ss `cf23438`。2026-11-05。2026-11-11 に ss の名前辞書と欄まで一致することを確かめた） |
+| ss-system | ss [DetailedDesign-locate.md](../../../../ss-system/docs/plan/detailed/DetailedDesign-locate.md)（口の振る舞い）と ss [DetailedDesign-names.md](../../../../ss-system/docs/plan/detailed/DetailedDesign-names.md) §0・§3（名前）。アクション・後片付けの完了・状態の 3 つ。型は ss の `ss_ws/src/ss_msgs` を読み取り専用で取り込み、版は状態の `interface_version` で照合する | **2026-11-05 本システムが確かめ、ss が記録した**（ss `9cd9764`）。ss の後片付けの上限は暫定 30 s（結果を返してから数える）。**型 `ss_msgs` は ss の `main` に入った**（ss `cf23438`。2026-11-05。2026-11-11 に ss の名前辞書と欄まで一致することを確かめた）。**2026-11-16 に版 `"2"` を確かめた**（ss `8760b4e`。理由 `ceiling_unknown`・`camera_pose_unknown`、結果の `cleanup_limit_s`、後片付けの上限が固定でなくなる。本システムの扱いは [-auto.md](DetailedDesign-auto.md) §2.4）。**ss の実装と型は `WP-LOC-03` が入るまで版 `"1"` のまま。本物の口（`WP-AUTO-06`）は版 `"2"` の型で作り、版 `"1"` との両対応はしない** |
 
 **名前は写さない**（写しは先方が直ったときに古いまま残る）。hve の名前で本物の口（WP-AUTO-05）を作るのは、hve が実機に入れたと知らせてから。それまで [-auto.md](DetailedDesign-auto.md) §1.3 の昇降機の口は抽象のまま（偽物で試験する）。
 
@@ -111,8 +111,8 @@ th 側の名前（`/measure/*`・`/map`・`/ui/active_screen`・`/safety/estop_u
 | 種類 | 名前 |
 | --- | --- |
 | 段（`phase`） | `IDLE` / `PREPARE` / `SURVEY` / `SELECT` / `LOWER` / `GOAL` / `RECHECK` / `AT_PANEL` / `FINISH` / `PAUSED` / `REENTRY` / `HALTED` |
-| 飛ばす理由（`PanelResult.reason`） | `no_path`（経路の再計算をしても解けない）/ `stand_blocked`（正面側の床が塞がっていて立てない）/ `stand_mismatch`（認識し直した立ち位置が許容差を超える）/ `top_not_found`（天面が見つからない）/ `arm_space_blocked`（腕が振れる範囲が左右とも塞がっている。測定機構の口が返す）/ `no_mechanism`（測定機構が付いていない）/ `ss_failed`（ss の結果が時間内に来ない・使える結果が得られない）/ `camera_too_low`（ss が撮る高さまでカメラを上げられない。天井が低い・天井の値が古いなど） |
-| 関門と見張りの理由（`AutoState.gate_reason`。`AutoCommand` の `reject_reason` にも使う） | §4.2 の `lift_not_bottom`・`arm_not_stowed`・`ss_busy`・`state_unreadable`（th の様子・昇降機の高さ・腕の状態・ss の状態のどれかが読めない）・`reentry_required`・`version_mismatch` に加えて、**2026-11-11 に足した**: `th_not_waiting`（ss への依頼で th が `WAIT` でない）/ `arm_link_lost`（測定機構があるのに腕の制御器と通信できない。止める理由と同じキー）/ `not_listed`（関門の表に無い指示。[-auto.md](DetailedDesign-auto.md) §4.1）/ `lift_drift`（走っている間に昇降機が下端から `lift_drift_stop_mm` 以上離れた。見張り §4.2） |
+| 飛ばす理由（`PanelResult.reason`） | `no_path`（経路の再計算をしても解けない）/ `stand_blocked`（正面側の床が塞がっていて立てない）/ `stand_mismatch`（認識し直した立ち位置が許容差を超える）/ `top_not_found`（天面が見つからない）/ `arm_space_blocked`（腕が振れる範囲が左右とも塞がっている。測定機構の口が返す）/ `no_mechanism`（測定機構が付いていない）/ `ss_failed`（ss の結果が時間内に来ない・使える結果が得られない）/ `camera_too_low`（ss が撮る高さまでカメラを上げられない。天井が近い・上端）/ `ceiling_unknown`（ss が天井までの距離が分からず上がれない。2026-11-16。ss の版 2 で `camera_too_low` から分かれた） |
+| 関門と見張りの理由（`AutoState.gate_reason`。`AutoCommand` の `reject_reason` にも使う） | §4.2 の `lift_not_bottom`・`arm_not_stowed`・`ss_busy`・`state_unreadable`（th の様子・昇降機の高さ・腕の状態・ss の状態のどれかが読めない）・`reentry_required`・`version_mismatch` に加えて、**2026-11-11 に足した**: `th_not_waiting`（ss への依頼で th が `WAIT` でない）/ `arm_link_lost`（測定機構があるのに腕の制御器と通信できない。止める理由と同じキー）/ `not_listed`（関門の表に無い指示。[-auto.md](DetailedDesign-auto.md) §4.1）/ `lift_drift`（走っている間に昇降機が下端から `lift_drift_stop_mm` 以上離れた。見張り §4.2）/ **2026-11-16 に足した**: `camera_pose_unknown`（盤前の認識し直しで ss が「カメラの向きが分からない」を返して一時停止している。ss の理由と同じキー。[-auto.md](DetailedDesign-auto.md) §2.4） |
 | 止める理由（`halt_reason`） | `arm_stuck`（腕が出たまま動けない）/ `lift_not_lowered`（昇降機を下げられない）/ `state_unreadable`（昇降機の高さか腕の状態が読めない）/ `ss_cleanup_timeout`（ss の後片付けの完了が来ない）/ `ss_link_lost`（ss と通信できない）/ `arm_link_lost`（腕が出ている間に腕の制御器と通信できない） |
 
 ### 4.4 配置図の ID（2026-11-11）
@@ -148,7 +148,8 @@ th 側の名前（`/measure/*`・`/map`・`/ui/active_screen`・`/safety/estop_u
 | `ss_status_stale_ms` | ms | 1000 | 先方（ss の勧め。ss の状態は 200 ms ごと。その 5 回分。届かなければ `ss_link_lost`） |
 | `ss_pos_std_max_m` | m | 0.15 | 暫定（盤を「確か」とみなす位置の標準偏差の上限。ss の配置図向けの精度の目標 ±15 cm に揃えた） |
 | `ss_yaw_std_max_deg` | ° | 5 | 暫定（同じく向き。ss の目標 ±5° に揃えた） |
-| `ss_cleanup_timeout_s` | s | 60 | 暫定（仕様は「一定時間」。結果か取り消しのあと、後片付けの完了を待つ上限。超えたら `ss_cleanup_timeout`。依頼から数えると、本システムが待つのは最長で `ss_result_timeout_s` ＋ これ。**ss 自身の上限 `cleanup_timeout_s`（暫定 30 s。結果を返してから数える）より長くしておく**こと。ss は見直して 60 s に近づくときは先に知らせる） |
+| `ss_cleanup_timeout_s` | s | 210 | 暫定（**結果が届かないまま**後片付けの完了を待つときの上限。結果の `cleanup_limit_s` が有限でない・負のときもこれ。超えたら `ss_cleanup_timeout`。2026-11-16 までは、いつもこの固定値（60 s）で待っていた。**ss の `cleanup_limit_s` の最大（暫定 200 s。ss が切り詰めて保証する。ss `32e7789`）＋ `ss_cleanup_margin_s`**。ss が最大を見直したら合わせる） |
+| `ss_cleanup_margin_s` | s | 10 | 暫定（2026-11-16。結果が届いたあとは、結果を受けてから「結果の `cleanup_limit_s` ＋ これ」だけ後片付けの完了を待つ。超えたら `ss_cleanup_timeout`） |
 | `ss_max_distance_m` | m | 0 | 先方（0 は ss の既定 5.0 m。ss DetailedDesign-locate.md §1）。全周・盤前とも。2026-11-11 に足した |
 | `recheck_match_max_m` | m | 0.3 | 暫定（盤前で認識し直したとき、配置図の盤の中心からこの距離以内で最も近い矩形をその盤とみなす。無ければ見つからない（`top_not_found`）。ss の配置図向けの精度 ±15 cm の 2 倍。隣の盤を取り違えないため。2026-11-11 に足した） |
 | `recheck_span_rad` | rad | 3.1416 | 暫定（盤前で認識し直すときに ss へ渡す方向の幅 π。機体の前の半分で、開始は −π/2。盤前では盤は真正面にある。2026-11-11 に足した） |

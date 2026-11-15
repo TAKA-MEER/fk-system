@@ -35,7 +35,7 @@
 | 機能側（`fk_auto`） | th と同じ PC の**別コンテナ `fk_robot`**。`--network host`・`ROS_DOMAIN_ID` 10・FastDDS は UDP だけ | th とは ROS 2 で直接（th [DetailedDesign-measure.md](../../../../th-system/docs/plan/detailed/DetailedDesign-measure.md) §1）。**UDP だけのプロファイルと型は th のリポジトリ（`../th-system`）のものをコンテナに入れて使い、写さない** |
 | 画面（`fk_web`） | 同じコンテナから静的に配信（ポートは -names.md §6） | **本システムの rosbridge**（別ポート）: 機能側への指示・状態・配置図・結果。**th の rosbridge（9090）**: 在席 `/ui/active_screen`・非常停止 `/safety/estop_ui`・ヘッダーと異常ウィンドウ（th DetailedDesign-measure.md §4）・配置図に重ねる機体の位置と地図。一覧は [-web.md](DetailedDesign-web.md) §1.1 |
 | 昇降機（hve-system の昇降部） | — | **カメラモジュールと同じ WS の口に、名前 `fk` で繋ぐ**（hve が書き本システムが確かめる。2026-11-05。案は hve-system [DetailedDesign-protocol-modules.md](../../../../hve-system/docs/plan/detailed/DetailedDesign-protocol-modules.md)）。**hve の実装が入るまで案の名前で実装しない。今の昇降部は本システムの接続の上昇に天井を見ないので、それまで上昇させない** |
-| ss-system | 同じ PC の ss のコンテナ | **ROS 2 で直接**（設定は本システムと同じ。2026-11-05 ss のユーザー決定）。ss のアクション（依頼・取り消し・結果）・後片付けの完了・状態の 3 つ。**名前と形は ss が書き、2026-11-05 に確かめた**（[-names.md](DetailedDesign-names.md) §1）。**ss の状態が `IDLE` でない間は、本システム以外の依頼でも ss が動かしているとみなす**（§4.1） |
+| ss-system | 同じ PC の ss のコンテナ | **ROS 2 で直接**（設定は本システムと同じ。2026-11-05 ss のユーザー決定）。ss のアクション（依頼・取り消し・結果）・後片付けの完了・状態の 3 つ。**名前と形は ss が書き、2026-11-05 に確かめた**（版 2 は 2026-11-16。[-names.md](DetailedDesign-names.md) §1）。**ss の状態が `IDLE` でない間は、本システム以外の依頼でも ss が動かしているとみなす**（§4.1） |
 
 **機能側は PC の起動と同時に立ち上げ、止めない。**th は自律測定へ入るときに生存確認を見る（th `SM-3.1.2-120`）。「許可する」を押す前から生存確認が出ている必要がある。
 
@@ -74,7 +74,7 @@
 | `SELECT` | 人が盤を選んで「開始」（`auto.start`）するのを待つ。「もう一度探す」（`auto.rescan`）→ `SURVEY` | 開始 → 回る順を決めて（§3 `order_panels`）`LOWER` |
 | `LOWER` | 昇降機が下端でなければ下げる | 下端 → `GOAL`。下げられない → `HALTED` |
 | `GOAL` | 立ち位置（§3 `stand_pose`）へ `meas.goal`。`BLOCKED` が `blocked_wait_s` 続いたら `meas.reroute`（`reroute_max` 回まで） | `ARRIVED` → `RECHECK`。解けない → `meas.abort` → 飛ばす（`no_path`）。立てない（§3 `stand_blocked`）→ 出さずに飛ばす（`stand_blocked`） |
-| `RECHECK` | その盤の方向を ss に依頼して認識し直し、配置図を直す（**その盤とみなすのは、配置図の中心から `recheck_match_max_m` 以内で最も近い矩形。無ければ `top_not_found`**。2026-11-11。隣の盤を取り違えないため）。立ち位置を求め直す。結果が使えなければ依頼し直す（`ss_retry_max` 回まで） | ずれが許容差内 → `AT_PANEL`。超える → 1 回だけ `GOAL` に戻る。2 回目も超える → 飛ばす（`stand_mismatch`）。見つからない → 飛ばす（`top_not_found`）。ss が「必要な高さまで上がれない」を返した → 飛ばす（`camera_too_low`）。時間切れ・使える結果が得られない → 取り消して後片付けを待ち、飛ばす（`ss_failed`） |
+| `RECHECK` | その盤の方向を ss に依頼して認識し直し、配置図を直す（**その盤とみなすのは、配置図の中心から `recheck_match_max_m` 以内で最も近い矩形。無ければ `top_not_found`**。2026-11-11。隣の盤を取り違えないため）。立ち位置を求め直す。結果が使えなければ依頼し直す（`ss_retry_max` 回まで） | ずれが許容差内 → `AT_PANEL`。超える → 1 回だけ `GOAL` に戻る。2 回目も超える → 飛ばす（`stand_mismatch`）。見つからない → 飛ばす（`top_not_found`）。ss が「必要な高さまで上がれない」を返した → 飛ばす（`camera_too_low`）。「天井までの距離が分からず上がれない」→ 飛ばす（`ceiling_unknown`）。「カメラの向きが分からない」→ 飛ばさず `PAUSED`（§2.4）。時間切れ・使える結果が得られない → 取り消して後片付けを待ち、飛ばす（`ss_failed`） |
 | `AT_PANEL` | 測定機構の口に盤前の作業を渡し、結果を待つ | 結果を記録 → 次の盤の `LOWER`。全部済み → `FINISH` |
 | `FINISH` | 昇降機を下げ、最後の盤の前で待つ。結果の一覧を出す | 人が選び直して「開始」→ `LOWER` |
 
@@ -103,6 +103,15 @@
 | 人の「中止」で外れた盤 | 結果を残さない（経路が解けない `no_path` は残す） |
 | `SURVEY` で ss に依頼を出せない（関門が通さない・ss が受けない） | 待ち続ける（理由は `gate_reason`）。人は「終了」で抜けられる |
 | ss の結果が来ないとみなす時刻 | 依頼から `ss_result_timeout_s` ＋ `ss_status_stale_ms`（ss 自身の時間切れの結果を先に受けるため） |
+
+### 2.4 ss の口の版 2 の扱い（2026-11-16。[Spec-auto.md](../spec/Spec-auto.md) §3）
+
+| 場面 | 振る舞い |
+| --- | --- |
+| 後片付けの完了を待つ上限 | **結果を受けたあとは、結果を受けた時刻から `cleanup_limit_s` ＋ `ss_cleanup_margin_s`。**結果が届いていない（取り消したのに結果も来ない）・値が有限でない・負のときは、待ち始めから `ss_cleanup_timeout_s`。待っている途中で結果が届いたら、届いた時刻から数え直す。超えたら `HALTED`（`ss_cleanup_timeout`） |
+| `SURVEY` で `ceiling_unknown`・`camera_pose_unknown` | ほかの途中の終わり方と同じ。返った盤と見た範囲を配置図に使い、理由を `survey_reason` に出す（「もう一度探す」で探し直せる） |
+| `RECHECK` で `ceiling_unknown` | 飛ばす（`ceiling_unknown`）。返った盤があっても使わない（`camera_too_low` と同じ） |
+| `RECHECK` で `camera_pose_unknown` | **後片付けの完了を受けてから `PAUSED`。返った盤があっても使わず、飛ばさない。**`gate_reason` に `camera_pose_unknown` を出し続ける。人の「走行」（`auto.run`）で `RECHECK` の頭からやり直す（th は `WAIT` のままなので `meas.start` は出さない。依頼は関門を通す）。自分からは依頼し直さない |
 
 ### 2.3 測定機構なしの道
 
@@ -191,5 +200,6 @@ th の 8-g（th 側の実装）が入ったら、`fake_th` との差を本物の
 | **WP-AUTO-04** 画面 | 配置図と地図の表示・盤の選択と「開始」・「停止」「走行」「中止」「もう一度探す」「終了」（腕の確認つき）・結果の一覧・在席（S-60）・非常停止・ヘッダー。**詳しくは [-web.md](DetailedDesign-web.md)**（2026-11-12 案。お立会試験の `S-21` は測定機構の設計のあと）。**画面のほか `fk_msgs`（`AutoState`・`Layout` に欄を足す）・`runner`・`auto_runner`・`fk_sim`（試験用の起動）・Dockerfile（rosbridge）にも手を入れる** | 03 | ブラウザから `fake_th` 相手に一通り操作できる（[-web.md](DetailedDesign-web.md) §7） |
 | **WP-AUTO-05** 昇降機の口 | `LiftPort` の本物 | 01・**hve の実装が実機に入るまで** | 実機の昇降部で、状態を読み、下端まで下げられる |
 | **WP-AUTO-06** ss の口 | `SsPort` の本物 | 01（ss の型は ss `cf23438` で入った） | ss 相手に配置図ができる |
+| **WP-AUTO-09** ss の口の版 2 | §2.4（後片付けの待ち方・理由 2 つ）を状態機械と偽の ss に入れる | 03 | 偽の ss 相手に、後片付けの上限が長い依頼でも止まらず、`camera_pose_unknown` で一時停止して「走行」で戻る |
 
 **05 は hve が実機に入れたと知らせるまで着手しない。**01〜04・06 は今から進められる（06 は 01 のあと）。**01 が取り込む th の型は、th の作業ブランチ `feat/era3-measure` にある**（2026-11-11 に型だけ先に入れてもらった。[Spec-open.md](../spec/Spec-open.md) §1.2。th の `main` へのマージは確認期の試験のあと）。**`../th-system` の作業ツリーの今のブランチに頼らず、コミット（`a33dd9a`）を固定して取り込む**（th は確認期の試験と測定期の作業でブランチを切り替えるので、作業ツリーの中身は時によって変わる）。
