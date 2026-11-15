@@ -50,6 +50,7 @@ class SsResult:
     panels: Tuple[core.SsRect, ...] = ()
     seen_from_rad: Tuple[float, ...] = ()
     seen_span_rad: Tuple[float, ...] = ()
+    cleanup_limit_s: Optional[float] = None   # 後片付けの完了を待ってよい上限（s）。None は知らされていない
 
 
 @dataclass(frozen=True)

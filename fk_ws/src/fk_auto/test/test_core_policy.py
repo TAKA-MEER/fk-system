@@ -89,9 +89,10 @@ def test_classify_skip_all_events():
     assert classify_skip(SkipEvent.SS_TIMEOUT) == "ss_failed"
     assert classify_skip(SkipEvent.SS_RESULT_UNUSABLE) == "ss_failed"
     assert classify_skip(SkipEvent.CAMERA_TOO_LOW) == "camera_too_low"
+    assert classify_skip(SkipEvent.CEILING_UNKNOWN) == "ceiling_unknown"
     assert {classify_skip(e) for e in SkipEvent} <= {
         "no_path", "stand_blocked", "stand_mismatch", "top_not_found", "arm_space_blocked",
-        "no_mechanism", "ss_failed", "camera_too_low"}
+        "no_mechanism", "ss_failed", "camera_too_low", "ceiling_unknown"}
 
 
 def test_classify_halt_all_events():

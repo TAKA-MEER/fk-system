@@ -59,7 +59,8 @@ class Params:
     regoal_max: int = 1
     lift_lower_timeout_s: float = 60
     ss_result_timeout_s: float = 300
-    ss_cleanup_timeout_s: float = 60
+    ss_cleanup_timeout_s: float = 210
+    ss_cleanup_margin_s: float = 10
     ss_max_distance_m: float = 0
     recheck_span_rad: float = 3.1416
     ss_retry_max: int = 2
@@ -701,6 +702,7 @@ class SkipEvent(Enum):
     SS_TIMEOUT = 7               # ss の結果が時間内に来ない
     SS_RESULT_UNUSABLE = 8       # 依頼し直しても使える結果が得られない
     CAMERA_TOO_LOW = 9           # ss が必要な高さまで上がれない
+    CEILING_UNKNOWN = 10         # ss が天井までの距離が分からず上がれない（ss の口の版 2）
 
 
 class HaltEvent(Enum):
@@ -723,6 +725,7 @@ _SKIP_REASONS = {
     SkipEvent.SS_TIMEOUT: "ss_failed",
     SkipEvent.SS_RESULT_UNUSABLE: "ss_failed",
     SkipEvent.CAMERA_TOO_LOW: "camera_too_low",
+    SkipEvent.CEILING_UNKNOWN: "ceiling_unknown",
 }
 
 _HALT_REASONS = {
@@ -733,6 +736,19 @@ _HALT_REASONS = {
     HaltEvent.SS_LINK_LOST: "ss_link_lost",
     HaltEvent.ARM_LINK_LOST: "arm_link_lost",
 }
+
+
+def ss_cleanup_deadline_ms(result_received_ms: Optional[float], cleanup_limit_s: Optional[float],
+                           wait_started_ms: float, margin_s: float, timeout_s: float) -> float:
+    """ss の後片付けの完了を待つ上限の時刻（DetailedDesign-auto.md §2.4）。
+
+    結果を受けていて cleanup_limit_s が有限かつ 0 以上 → 結果を受けた時刻 ＋ (limit ＋ margin)。
+    それ以外（結果が無い・None・NaN・inf・負）→ 待ち始めの時刻 ＋ timeout。
+    """
+    if (result_received_ms is not None and cleanup_limit_s is not None
+            and math.isfinite(cleanup_limit_s) and cleanup_limit_s >= 0):
+        return result_received_ms + (cleanup_limit_s + margin_s) * 1000.0
+    return wait_started_ms + timeout_s * 1000.0
 
 
 def classify_skip(event: SkipEvent) -> str:

@@ -397,6 +397,8 @@ class SsResponse:
     panels: Tuple[core.SsRect, ...] = ()
     seen_from_rad: Tuple[float, ...] = ()
     seen_span_rad: Tuple[float, ...] = ()
+    # None なら cleanup_delay_ms / 1000 を結果に入れる。human_override のときは 0
+    cleanup_limit_s: Optional[float] = None
 
 
 class FakeSs(SsPort):
@@ -436,8 +438,13 @@ class FakeSs(SsPort):
         if a is not None and a["stage"] == "running":
             if a["cancel"] or (not self.never_result and now_ms >= a["result_at"]):
                 resp: SsResponse = SsResponse(reason="canceled") if a["cancel"] else a["resp"]
+                limit = a["resp"].cleanup_limit_s if resp.cleanup_limit_s is None else                     resp.cleanup_limit_s
+                if resp.reason == "human_override":
+                    limit = 0.0
+                elif limit is None:
+                    limit = self.cleanup_delay_ms / 1000.0
                 self._results.append(SsResult(a["id"], resp.reason, resp.panels,
-                                              resp.seen_from_rad, resp.seen_span_rad))
+                                              resp.seen_from_rad, resp.seen_span_rad, limit))
                 a["stage"] = "cleaning"
                 a["reason"] = resp.reason
                 a["cleanup_at"] = now_ms + self.cleanup_delay_ms

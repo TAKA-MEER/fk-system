@@ -24,7 +24,8 @@ auto_runner:
     ss_status_stale_ms: 1000.0
     ss_pos_std_max_m: 0.15
     ss_yaw_std_max_deg: 5.0
-    ss_cleanup_timeout_s: 60.0
+    ss_cleanup_timeout_s: 210.0
+    ss_cleanup_margin_s: 10.0
     ss_max_distance_m: 0.0
     recheck_span_rad: 3.1416
     recheck_match_max_m: 0.3
