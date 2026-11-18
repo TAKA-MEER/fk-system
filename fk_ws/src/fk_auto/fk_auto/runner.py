@@ -71,6 +71,7 @@ class PanelView:
     ss_front_yaw: float
     front_doubt: bool
     row_id: str = ""
+    depth_measured: bool = True   # 奥行きを測れたか（2026-11-18。配置図では送信側の値をそのまま）
 
 
 @dataclass
@@ -174,6 +175,7 @@ class Runner:
         self._layout_map_id = ""
         self._layout_panels: List[PanelView] = []
         self._core_panels: Dict[str, core.Panel] = {}
+        self._survey_rects: Dict[str, core.MapRect] = {}   # 配置図の盤ごとの矩形（盤前の補い用）
         self._rows: List[List[str]] = []
         self._unseen: List[Tuple[float, float]] = []
         self._regoal: Dict[str, int] = {}
@@ -568,6 +570,7 @@ class Runner:
         self._enter("IDLE")
         self._cur, self._queue = "", []
         self._layout_map_id, self._layout_panels, self._core_panels = "", [], {}
+        self._survey_rects = {}
         self._rows, self._unseen, self._regoal = [], [], {}
         self._survey_reason = ""
         self._abort = None
@@ -764,10 +767,11 @@ class Runner:
                                         p.ss_yaw_std_max_deg),
             ss_front_known=rect.front_known,
             ss_front_yaw=edge.ss_front_yaw if edge.ss_front_yaw is not None else 0.0,
-            front_doubt=edge.front_doubt, row_id=row_id)
+            front_doubt=edge.front_doubt, row_id=row_id, depth_measured=rect.depth_measured)
 
     def _set_layout(self, snap, result: Optional[SsResult], th_req: Optional[core.ThStatus]) -> None:
         self._layout_panels, self._core_panels, self._rows, self._unseen = [], {}, [], []
+        self._survey_rects = {}
         self._layout_map_id = th_req.map_instance_id if th_req is not None else (
             snap.th.map_instance_id if snap.th is not None else "")
         if result is None:
@@ -787,6 +791,7 @@ class Runner:
         for (pid, ss_rect, rect, edge), cp in zip(views, cps):
             self._layout_panels.append(self._panel_view(pid, ss_rect, rect, edge, row_of.get(pid, "")))
             self._core_panels[pid] = cp
+            self._survey_rects[pid] = rect
 
     # --- GOAL ---
 
@@ -838,6 +843,9 @@ class Runner:
             self._skip(done.failure)                  # ss_failed
             return
         res = done.result
+        if res.reason == "ss_rejected":
+            self._skip(SkipEvent.SS_TIMEOUT)          # ss が依頼を断った: 飛ばす（ss_failed）
+            return
         if res.reason == "camera_too_low":
             self._skip(SkipEvent.CAMERA_TOO_LOW)
             return
@@ -867,6 +875,7 @@ class Runner:
                                  self.p.ss_yaw_std_max_deg):
             self._skip(SkipEvent.TOP_NOT_FOUND)
             return
+        rect = core.recheck_rect(rect, self._survey_rects.get(self._cur))
         edge = core.front_edge(rect, (req.x, req.y))
         cp = core.make_panel(self._cur, rect, edge)
         self._core_panels[self._cur] = cp

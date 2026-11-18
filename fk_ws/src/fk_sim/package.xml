@@ -9,6 +9,8 @@
   <depend>rclpy</depend>
   <depend>std_msgs</depend>
   <depend>th_system_msgs</depend>
+  <depend>ss_msgs</depend>
+  <depend>unique_identifier_msgs</depend>
   <depend>nav_msgs</depend>
   <depend>geometry_msgs</depend>
   <depend>fk_auto</depend>

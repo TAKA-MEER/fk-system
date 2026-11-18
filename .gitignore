@@ -43,3 +43,5 @@ fk_ws/install/
 fk_ws/log/
 fk_ws/src/th_system_msgs/
 fk_ws/th_import/
+fk_ws/src/ss_msgs/
+fk_ws/ss_import/

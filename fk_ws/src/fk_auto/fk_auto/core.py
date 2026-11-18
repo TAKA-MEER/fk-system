@@ -96,6 +96,7 @@ class SsRect:
     front_known: bool = False
     front_yaw_rad: float = 0.0
     top_height_m: float = 0.0   # 天面の高さ。to_map は触らない（Runner が順序で対応づける。WP-AUTO-03）
+    depth_measured: bool = True   # 奥行きを測れたか（ss の口の版 3。測れていなければ奥行きは既定値）
 
 
 @dataclass(frozen=True)
@@ -111,6 +112,7 @@ class MapRect:
     lugs: int = 0
     front_known: bool = False
     front_yaw_rad: float = 0.0  # front_known のとき地図の座標
+    depth_measured: bool = True   # 奥行きを測れたか（to_map が引き継ぐ）
 
 
 @dataclass(frozen=True)
@@ -139,6 +141,7 @@ class Panel:
     front_yaw: float
     front_half_m: float = 0.0    # 中心から正面の辺まで
     front_length_m: float = 0.0  # 正面の辺の長さ
+    depth_measured: bool = True   # 奥行きを測れたか（配置図の盤前の作業が読む。DetailedDesign-auto.md §2.5）
 
 
 @dataclass(frozen=True)
@@ -284,6 +287,7 @@ def to_map(panels: Sequence[SsRect], request_pose: Pose,
             pos_std_m=p.pos_std_m, yaw_std_deg=p.yaw_std_deg, lugs=p.lugs,
             front_known=p.front_known,
             front_yaw_rad=wrap_angle(p.front_yaw_rad + request_pose.yaw) if p.front_known else 0.0,
+            depth_measured=p.depth_measured,
         ))
     return ToMapResult(tuple(out),
                        unseen_ranges(seen_from_rad, seen_span_rad, request_pose.yaw))
@@ -327,7 +331,38 @@ def front_edge(rect: MapRect, observer_xy: Tuple[float, float]) -> FrontEdge:
 
 
 def make_panel(panel_id: str, rect: MapRect, edge: FrontEdge) -> Panel:
-    return Panel(panel_id, rect.x, rect.y, edge.front_yaw, edge.half_distance_m, edge.length_m)
+    return Panel(panel_id, rect.x, rect.y, edge.front_yaw, edge.half_distance_m, edge.length_m,
+                 rect.depth_measured)
+
+
+def recheck_rect(rect: MapRect, survey_rect: Optional[MapRect]) -> MapRect:
+    """盤前の認識し直しで奥行きを測れていない盤を、配置図の値で直す（DetailedDesign-auto.md §2.5）。
+
+    認識し直した盤が測れていた・配置図が無いときはそのまま返す。測れていないときは、
+    認識し直した盤の奥行きの向き（基準の辺の法線）に沿った配置図の長さを使う: 配置図の
+    基準の辺の法線と認識し直しのものの差を π を法として折り返し、45° 以内なら配置図の
+    奥行き（配置図が測れていなければそのまま返す）、そうでなければ配置図の幅（吊り金具の
+    列の長さなので測れている扱い）。ss の基準の辺を動かさず、中心を奥へずらす。ずらす量は
+    （配置図の長さ − ss の奥行き）/ 2 で、向きは基準の辺の外向きの法線と逆（奥は盤の内側）。
+    直した矩形の奥行きは配置図の長さになり、depth_measured は True になる。
+    """
+    if rect.depth_measured or survey_rect is None:
+        return rect
+    raw = abs(survey_rect.yaw_rad - rect.yaw_rad) % math.pi
+    diff = min(raw, math.pi - raw)     # 向きは問わない（反対の辺も同じ向きとして扱う）
+    if diff <= math.pi / 4.0:
+        if not survey_rect.depth_measured:
+            return rect
+        length = survey_rect.depth_m
+    else:
+        length = survey_rect.width_m   # 幅は吊り金具の列の長さなので測れている扱い
+    half = (length - rect.depth_m) / 2.0
+    n = rect.yaw_rad
+    return MapRect(
+        x=rect.x - half * math.cos(n), y=rect.y - half * math.sin(n), yaw_rad=rect.yaw_rad,
+        width_m=rect.width_m, depth_m=length, pos_std_m=rect.pos_std_m,
+        yaw_std_deg=rect.yaw_std_deg, lugs=rect.lugs, front_known=rect.front_known,
+        front_yaw_rad=rect.front_yaw_rad, depth_measured=True)
 
 
 # ---------------------------------------------------------------------------

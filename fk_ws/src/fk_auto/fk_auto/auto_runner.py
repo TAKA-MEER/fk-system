@@ -8,8 +8,8 @@ RosThPort（th の口の ROS 2 の実装）と、Runner（fk_auto.runner。ROS �
 
 th への指示は Runner の送り口（Runner._emit）からだけ。このファイルのどこからも
 RosThPort.send を直接呼ばない。
-昇降機と ss の口は、コンストラクタで渡されたときだけ使う（本物はまだ無い。渡さなければ None で、
-関門が何も通さない）。
+ss の口は、ros_ss=True のとき本物 (RosSsPort) を作る。渡されなければ None で、関門が何も通さない。
+昇降機の口は、コンストラクタで渡されたときだけ使う（本物はまだ無い。WP-AUTO-05）。
 """
 import dataclasses
 import math
@@ -24,6 +24,7 @@ from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 
 from fk_auto import core
 from fk_auto.ports import NoMechanism, ThPort, ThReply, ThResult
+from fk_auto.ros_ss import RosSsPort
 from fk_auto.runner import Runner
 from fk_msgs.msg import AutoState, Layout, Panel, PanelResult, PanelResults
 from fk_msgs.srv import AutoCommand
@@ -136,9 +137,11 @@ class RosThPort(ThPort):
 
 
 class AutoRunner(Node):
-    def __init__(self, lift=None, ss=None, arm=None, pre_step=(), **kwargs):
+    def __init__(self, lift=None, ss=None, arm=None, pre_step=(), ros_ss=False, **kwargs):
         """lift・ss: 昇降機・ss の口（渡されなければ None）。pre_step: step の前に now_ms を渡して
-        呼ぶ関数（試験で偽の口の時刻を進める）。kwargs: parameter_overrides など。"""
+        呼ぶ関数（試験で偽の口の時刻を進める）。ros_ss=True なら本物の ss の口 (RosSsPort) を
+        作る（ss= が渡されたときはそちらが勝つ。既存の試験は ss=FakeSs(...) のまま使える）。
+        kwargs: parameter_overrides など。"""
         super().__init__('auto_runner', **kwargs)
         defaults = core.Params()
         for f in dataclasses.fields(core.Params):
@@ -156,6 +159,8 @@ class AutoRunner(Node):
         self._last_results_key = None
 
         self._th = RosThPort(self)
+        if ros_ss and ss is None:
+            ss = RosSsPort(self)
         self._cp = self._params()
         self.runner = Runner(self._th, lift, ss, arm if arm is not None else NoMechanism(self._cp),
                              self._cp)
@@ -288,7 +293,7 @@ class AutoRunner(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    node = AutoRunner()
+    node = AutoRunner(ros_ss=True)   # 本番の起動は本物の ss の口を使う
     try:
         rclpy.spin(node)   # シングルスレッドの実行器
     except KeyboardInterrupt:
