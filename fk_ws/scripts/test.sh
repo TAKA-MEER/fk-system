@@ -9,6 +9,12 @@ if [ ! -f th_import/th_ref ] || [ "$(tr -d '[:space:]' < th_import/th_ref)" != "
   exit 1
 fi
 
+# 1b. 取り込んだ ss の型が fk_ws/ss_ref と同じコミットか（th と同じ形）
+if [ ! -f ss_import/ss_ref ] || [ "$(tr -d '[:space:]' < ss_import/ss_ref)" != "$(tr -d '[:space:]' < ss_ref)" ]; then
+  echo "ERROR: ss_import/ss_ref が ss_ref と違う（または無い）。ホストで fk_ws/scripts/import_ss.sh を回して" >&2
+  exit 1
+fi
+
 # 2. 実機の ROS_DOMAIN_ID(10) では結合試験を回さない（実機と混線する）
 if [ "${ROS_DOMAIN_ID:-10}" = "10" ]; then
   echo "ERROR: ROS_DOMAIN_ID=10 は実機と混線するので試験を回さない。-e ROS_DOMAIN_ID=78 を付けて" >&2

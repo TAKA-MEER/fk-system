@@ -116,6 +116,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # th の型と UDP プロファイルを fk_ws/th_ref のコミットから取り出す（ホストで。th_ref を変えたら回し直す）
 bash fk_ws/scripts/import_th.sh
 
+# ss の型を fk_ws/ss_ref のコミットから取り出す（ホストで。ss_ref を変えたら回し直す）
+bash fk_ws/scripts/import_ss.sh
+
 # コンテナの中で colcon build ＋ 全試験（fk_ws/ から。ROS_DOMAIN_ID=78。10 だと test.sh が止める）
 cd fk_ws && docker compose build && docker compose run --rm -e ROS_DOMAIN_ID=78 fk_robot bash scripts/test.sh
 

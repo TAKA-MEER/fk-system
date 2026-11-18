@@ -15,5 +15,7 @@ services:
       - ./scripts:/root/fk_ws/scripts
       - ./th_import:/root/fk_ws/th_import
       - ./th_ref:/root/fk_ws/th_ref
+      - ./ss_import:/root/fk_ws/ss_import
+      - ./ss_ref:/root/fk_ws/ss_ref
     stdin_open: true
     tty: true
