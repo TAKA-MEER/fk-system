@@ -75,9 +75,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - **「実装して」と言われたら自分でコードを書かない。**ブリーフを実装エージェントに渡して投げる
   （手順・落とし穴は ImplementationPlan §2.1）。体数は固定しない。
-  **まず codex に投げ、利用枠の上限が来たら opencode に切り替える**（th-system 2026-10-26 ユーザー決定に揃えた）。
+  **投げる先の優先順は codex → DeepAI（無制限の無料モデル `deepai/muse-ember`。スキル `deepai-code-dispatch`）→ opencode → Sonnet のサブエージェント（`Agent` の `model: sonnet`。worktree は自分で切って渡す）**（2026-11-18 ユーザー決定。上が枠切れ・使えないときに次へ。ImplementationPlan §2.1）。
   codex は無料プランの 30 日枠で、使い切ると約 1 か月戻らない（**th-system・hve-system・ss-system と枠を共有する**）。codex は `CLAUDE.md` ではなく `AGENTS.md` を読む（中身は「CLAUDE.md を読め」だけ）。
-  **2026-11-11 ユーザー: codex・opencode とも枠切れなので、Sonnet のサブエージェント（`Agent` の `model: sonnet`）で実装する**（worktree は自分で切って渡す。ImplementationPlan §2.1）。
   **窓口は herdr と orca の 2 つ。いま開いている方を環境変数で見分けて使う**:
   `TERM_PROGRAM=Orca`／`ORCA_TERMINAL_HANDLE` があれば orca（`orca worktree create --setup skip --agent codex`。枠切れなら `--agent opencode`）、
   `HERDR_PANE_ID`／`HERDR_ENV` があれば herdr（`ImplementAgent` タブ・`herdr pane split`）。
