@@ -56,6 +56,9 @@
 | `Runner` | 状態機械（`fk_auto.runner`。ROS なし）。**th への指示と昇降機への命令は `Runner` の中の 1 つの送り口だけが出し、送るたびに `gate` を通す**（昇降機を下げ続ける間も 1 回ごと。2026-11-11） |
 | `ThModel` | th の振る舞いの ROS なしのモデル（th Spec-modes.md `SM-3.1.2-120`〜`-142`・th DetailedDesign-measure.md §3.1・§3.2）。**`FakeTh` と `FakeThNode` が同じものを使う**（偽物どうしで th の振る舞いがずれないように。2026-11-11） |
 | `FakeThNode` | ノード `fake_th` のクラス（`fk_sim.fake_th`）。WP-AUTO-01 では `FakeTh` と名付けていたが、偽の口とぶつかるので改める（2026-11-11） |
+| `RosSsPort` | ss の口の ROS 2 の実装（`fk_auto.ros_ss`。2026-11-18 WP-AUTO-06。[-auto.md](DetailedDesign-auto.md) §2.5） |
+| `SS_INTERFACE_VERSION` | 取り込んだ ss の型の版（`"3"`）。`/ss/locate/status` の版と比べる。`fk_ws/ss_ref` を進めるときに一緒に見直す |
+| `FakeSsNode` | ノード `fake_ss` のクラス（`fk_sim.fake_ss`。ss の口を ROS 2 で真似る。振る舞いは `fk_auto.fakes.FakeSs`） |
 | `RosThPort` | th の口の ROS 2 の実装（`fk_auto.auto_runner` に置く。rclpy を使うので `ports.py` に置かない。2026-11-11） |
 | `to_map`・`front_edge`・`is_confident`・`group_rows`・`order_panels`・`stand_pose`・`stand_blocked`・`needs_regoal`・`ss_result_valid`・`can_run`・`classify_skip`・`classify_halt`・`gate`・`drive_watch` | 純関数（[-auto.md](DetailedDesign-auto.md) §3・§4） |
 | `CMD_LIFT_LOWER`（`"lift.lower"`）・`CMD_SS_REQUEST`（`"ss.request"`） | `gate` に渡す「昇降機を下げる」「ss への依頼」（`fk_auto.core` の定数。外へは出さない。2026-11-11 WP-AUTO-02） |
@@ -82,8 +85,8 @@ th 側の名前（`/measure/*`・`/map`・`/ui/active_screen`・`/safety/estop_u
 | --- | --- |
 | `AutoCommand.srv` | `string command` / `string[] panel_ids`（`auto.start` だけ）/ `bool arm_confirmed`（`auto.finish` だけ。画面で腕の確認が済んだ）→ `bool accepted` / `string reject_reason` |
 | `AutoState.msg` | `std_msgs/Header header` / `string phase` / `string panel_id`（いま向かっている・作業中の盤）/ `string[] queue`（残りの順）/ `string halt_reason` / `string gate_reason`（関門で止めている理由。無ければ空）/ `bool lift_at_bottom` / `bool lift_readable` / `bool arm_stowed` / `bool mechanism_attached` / `bool reentry_required` / `string th_mode` / `string th_state` / `string th_reject_reason`（th が最後に指示を拒否した理由。th の理由キーのまま。無ければ空。2026-11-11 に足した。**th の `/measure/command` が見えない・応答が得られないときは、本システムが `th_unreachable` を入れる**）/ **案**: `bool goal_valid` / `float64 goal_x` / `float64 goal_y` / `float64 goal_yaw`（いま向かっている立ち位置。`meas.goal` に出したもの。map フレーム。向かっていなければ `goal_valid` が false。画面の配置図に出す。2026-11-12 [-web.md](DetailedDesign-web.md) §8） |
-| `Panel.msg` | `string panel_id` / `float64 x` / `float64 y`（天面の中心。map フレーム [m]）/ `float64 front_yaw`（正面の向き。盤から外向き [rad]）/ `float32 width_m` / `float32 depth_m` / `float32 top_height_m` / `float32 pos_std_m` / `float32 yaw_std_deg` / `int32 lugs`（ss の確からしさ。使った吊り金具の数。ss の名前に揃えた）/ `bool confident`（しきい値を満たすか）/ `bool ss_front_known`（ss が「正面が分かっている」と返した）/ `float64 ss_front_yaw`（そのときの ss の正面の向き。参考）/ `bool front_doubt`（ss の正面と、機体に向いていた辺が違う）/ `string row_id` |
-| `Layout.msg` | `std_msgs/Header header` / `string map_instance_id` / `Panel[] panels` / `float32[] unseen_from_rad` / `float32[] unseen_to_rad`（見ていない方向。map フレーム。ss が返す「実際に見た方位角の範囲」の残り）/ `string survey_reason`（配置図が空・途中で終わった理由。ss が返した終わり方（ss names §3 の `reason`。`completed` のときは空）のまま。結果が来ない・使える結果が得られないときは `ss_failed`。2026-11-11 に足した）/ **案**: `float64 survey_x` / `float64 survey_y`（全周を ss に依頼した時点の機体の位置。map フレーム。見ていない方向の扇の中心。2026-11-12 [-web.md](DetailedDesign-web.md) §8） |
+| `Panel.msg` | `string panel_id` / `float64 x` / `float64 y`（天面の中心。map フレーム [m]）/ `float64 front_yaw`（正面の向き。盤から外向き [rad]）/ `float32 width_m` / `float32 depth_m` / `float32 top_height_m` / `float32 pos_std_m` / `float32 yaw_std_deg` / `int32 lugs`（ss の確からしさ。使った吊り金具の数。ss の名前に揃えた）/ `bool confident`（しきい値を満たすか）/ `bool ss_front_known`（ss が「正面が分かっている」と返した）/ `float64 ss_front_yaw`（そのときの ss の正面の向き。参考）/ `bool front_doubt`（ss の正面と、機体に向いていた辺が違う）/ `string row_id` / `bool depth_measured`（奥行きを測れた。2026-11-18。[-auto.md](DetailedDesign-auto.md) §2.5） |
+| `Layout.msg` | `std_msgs/Header header` / `string map_instance_id` / `Panel[] panels` / `float32[] unseen_from_rad` / `float32[] unseen_to_rad`（見ていない方向。map フレーム。ss が返す「実際に見た方位角の範囲」の残り）/ `string survey_reason`（配置図が空・途中で終わった理由。ss が返した終わり方（ss names §3 の `reason`。`completed` のときは空）のまま。結果が来ない・使える結果が得られないときは `ss_failed`。2026-11-11 に足した。ss が依頼を断ったときは `ss_rejected`（2026-11-18））/ **案**: `float64 survey_x` / `float64 survey_y`（全周を ss に依頼した時点の機体の位置。map フレーム。見ていない方向の扇の中心。2026-11-12 [-web.md](DetailedDesign-web.md) §8） |
 | `PanelResult.msg` | `string panel_id` / `string result`（`DONE` / `SKIPPED`）/ `string reason` |
 | `PanelResults.msg` | `std_msgs/Header header` / `PanelResult[] results` |
 
@@ -200,6 +203,12 @@ th 側の名前（`/measure/*`・`/map`・`/ui/active_screen`・`/safety/estop_u
 | `fk_ws/docker-compose.yml` | サービス・コンテナ `fk_robot`（`network_mode: host`・`ROS_DOMAIN_ID=10`・FastDDS は UDP だけ） | 入れる |
 | `fk_ws/th_ref` | 取り込む th のコミット（全桁 1 行。いまは th `feat/era3-measure` の `a33dd9a`） | 入れる |
 | `fk_ws/scripts/import_th.sh` | ホストで回す。`fk_ws/th_ref` のコミットから th の型と UDP プロファイルを `git archive` で取り出す（th の場所の既定は `../th-system`） | 入れる |
+| `fk_ws/ss_ref` | 取り込む ss のコミット（全桁 1 行。いまは ss `main` の `fa2593c`。版 3）。2026-11-18 | 入れる |
+| `fk_ws/scripts/import_ss.sh` | ホストで回す。`fk_ws/ss_ref` のコミットから ss の型を `git archive` で取り出す（ss の場所の既定は `../ss-system`、環境変数 `SS_REPO`） | 入れる |
+| `fk_ws/src/ss_msgs/` | 取り込み先（ss の型） | **入れない**（`.gitignore`） |
+| `fk_ws/ss_import/` | 取り出したコミット `ss_ref`（`fk_ws/ss_ref` と合っているかを `test.sh` が見る） | **入れない**（`.gitignore`） |
+| `fk_ws/src/fk_auto/fk_auto/ros_ss.py` | `RosSsPort`（WP-AUTO-06） | 入れる |
+| `fk_ws/src/fk_sim/fk_sim/fake_ss.py` | ノード `fake_ss`（クラス `FakeSsNode`。WP-AUTO-06） | 入れる |
 | `fk_ws/src/th_system_msgs/` | 取り込み先（th の型） | **入れない**（`.gitignore`） |
 | `fk_ws/th_import/` | 取り込み先: UDP プロファイル `fastdds_udp.xml` と、取り出したコミット `th_ref`（`fk_ws/th_ref` と合っているかを `test.sh` が見る） | **入れない**（`.gitignore`） |
 | `fk_ws/scripts/test.sh` | コンテナの中で、取り込みが `th_ref` と合っているかの確認・`colcon build`・試験 | 入れる |

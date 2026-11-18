@@ -57,7 +57,7 @@
 | --- | --- | --- | --- |
 | **th** | モードと状態・自己位置と地図の世代・進行中の指示・止まった理由・入り直しの要否（`/measure/status`）／指示の結果（`/measure/result`）／腕が振れる範囲の確認 | 指示（`meas.goal`・`reroute`・`start`・`stop`・`abort`・`finish`）／生存確認 | **th の名前のまま**（th DetailedDesign-measure.md §2・§3）。`meas.turn`・`check_arm_clearance` は測定機構の側が使う |
 | **昇降機** | 下端に着いているか・高さ（読めるか）・原点が取れているか・いま操作している元（人か自動か）・測定機構が付いているか・腕の制御器と通信できるか・腕が格納位置にあるか（**分からないものは「読めない」として扱う**） | 下端まで下げる（下降を下端に着くまで送り続ける）・止める・目標の高さへの移動 | `LiftPort`。名前は hve の案（§1.1）。hve の実装が入ったら本物を作る（WP-AUTO-05） |
-| **ss** | 結果（盤ごとの天面の矩形と確からしさ（位置と向きの標準偏差・吊り金具の数）／空の一覧と理由・実際に見た方位角の範囲）・後片付けの完了 | 依頼（方位角の範囲・制限時間）・取り消し | **抽象のまま**（`SsPort`）。ss が名前を書いたら本物を作る（WP-AUTO-06） |
+| **ss** | 結果（盤ごとの天面の矩形と確からしさ（位置と向きの標準偏差・吊り金具の数）／空の一覧と理由・実際に見た方位角の範囲）・後片付けの完了 | 依頼（方位角の範囲・制限時間）・取り消し | `SsPort`。本物は `RosSsPort`（ss の版 3。§2.5。WP-AUTO-06） |
 | **測定機構** | 盤ごとの立ち位置・腕が格納位置にあるか・盤前の作業の結果（[Spec-auto.md](../spec/Spec-auto.md) §1 の 3 つだけ） | 盤前の作業を始める・中止（腕を格納してから止める） | `ArmPort`。**最初の版は「測定機構なし」**（§2.3） |
 
 ---
@@ -112,6 +112,27 @@
 | `SURVEY` で `ceiling_unknown`・`camera_pose_unknown` | ほかの途中の終わり方と同じ。返った盤と見た範囲を配置図に使い、理由を `survey_reason` に出す（「もう一度探す」で探し直せる） |
 | `RECHECK` で `ceiling_unknown` | 飛ばす（`ceiling_unknown`）。返った盤があっても使わない（`camera_too_low` と同じ） |
 | `RECHECK` で `camera_pose_unknown` | **後片付けの完了を受けてから `PAUSED`。返った盤があっても使わず、飛ばさない。**`gate_reason` に `camera_pose_unknown` を出し続ける。人の「走行」（`auto.run`）で `RECHECK` の頭からやり直す（th は `WAIT` のままなので `meas.start` は出さない。依頼は関門を通す）。自分からは依頼し直さない |
+
+### 2.5 ss の口の本物（`RosSsPort`。2026-11-18。WP-AUTO-06）
+
+名前と形は ss [DetailedDesign-names.md](../../../../ss-system/docs/plan/detailed/DetailedDesign-names.md) §3・§9a（版 `"3"`）。型は ss `fa2593c` から取り込む（[DetailedDesign-names.md](DetailedDesign-names.md) §7）。
+
+| 場面 | 振る舞い |
+| --- | --- |
+| 状態 | `/ss/locate/status` を受け、`phase` を `SsStatus.state`、受けた時刻を `read_ms` にする。**`interface_version` が `"3"` でなければ、状態は読めない（`state` を None）とする**（関門は `state_unreadable`、依頼の途中なら `ss_link_lost`。既存の扱いのまま） |
+| 依頼 | 最後に受けた状態が `IDLE` でない・アクションのサーバーが見えないときは出さない（`request` が None → `ss_busy`）。出すときは本システムが goal の UUID を作り、その 16 進を依頼の ID として返す（受け付けの返事を待たない） |
+| ss が依頼を断った（goal の拒否・送れない） | 口が、その ID の結果（`reason` は `ss_rejected`。盤なし・`cleanup_limit_s` 0）と後片付けの完了（`lift_restored: true`）を続けて溜める（ss は何も動かしていない）。`SURVEY` では `survey_reason` に `ss_rejected`、`RECHECK` では飛ばす（`ss_failed`） |
+| 結果 | アクションの結果（成功・中断・取り消しのどれでも中身を使う）を `SsResult` に直す。盤は `PanelTop` の欄をそのまま `SsRect` に移す（`depth_measured` を含む）。結果が取れなかった（例外）ときは何も溜めない（状態機械の時間切れに任せる） |
+| 後片付けの完了 | `/ss/locate/cleanup_done` の `goal_id` を 16 進に直して ID とする。**自分が出していない ID は捨てる**（transient_local で古いものが届く） |
+| 取り消し | goal を受けてもらっていればその場で取り消す。まだ返事が無ければ、受けてもらったときに取り消す |
+
+**奥行きを測れていない盤（[Spec-auto.md](../spec/Spec-auto.md) §3。`depth_measured` が false）**:
+
+| 場面 | 振る舞い |
+| --- | --- |
+| 配置図（`SURVEY`） | そのまま使う。`Panel.depth_measured` に出す |
+| 盤前の認識し直し（`RECHECK`） | 認識し直した盤が測れていればその値を使う。**測れておらず、配置図のその盤が測れていたら、奥行きは配置図の値を使い、ss の基準の辺（機体に向いていた辺）を動かさずに中心を奥へずらす**（中心 ＝ ss の中心 −（配置図の奥行き − ss の奥行き）/ 2 × 基準の辺の外向きの法線）。`depth_measured` は true のまま。どちらも測れていなければ false |
+| 盤前の作業 | 奥側の 2 隅を「測れなかった」にして手前の 2 隅と中央だけ測るのは**測定機構の側**（`core.Panel.depth_measured` を読む）。最初の版は測定機構なしなので何もしない |
 
 ### 2.3 測定機構なしの道
 
@@ -199,7 +220,7 @@ th の 8-g（th 側の実装）が入ったら、`fake_th` との差を本物の
 | **WP-AUTO-03** 状態機械 | §2 を偽の口で。測定機構なしの道で 1 盤・複数盤・飛ばす・止める・一時停止・入り直し | 01・02 | `fake_th` 相手に、選んだ盤を回り切って結果の一覧が出る。**変異: 関門を通さずに送る道・表に無い指示を出す道・`drive_watch` の結果を捨てる道を作ると、試験が落ちる** |
 | **WP-AUTO-04** 画面 | 配置図と地図の表示・盤の選択と「開始」・「停止」「走行」「中止」「もう一度探す」「終了」（腕の確認つき）・結果の一覧・在席（S-60）・非常停止・ヘッダー。**詳しくは [-web.md](DetailedDesign-web.md)**（2026-11-12 案。お立会試験の `S-21` は測定機構の設計のあと）。**画面のほか `fk_msgs`（`AutoState`・`Layout` に欄を足す）・`runner`・`auto_runner`・`fk_sim`（試験用の起動）・Dockerfile（rosbridge）にも手を入れる** | 03 | ブラウザから `fake_th` 相手に一通り操作できる（[-web.md](DetailedDesign-web.md) §7） |
 | **WP-AUTO-05** 昇降機の口 | `LiftPort` の本物 | 01・**hve の実装が実機に入るまで** | 実機の昇降部で、状態を読み、下端まで下げられる |
-| **WP-AUTO-06** ss の口 | `SsPort` の本物 | 01（ss の型は ss `cf23438` で入った） | ss 相手に配置図ができる |
+| **WP-AUTO-06** ss の口 | §2.5（`SsPort` の本物 `RosSsPort`・ss の型の取り込み・`depth_measured`・ROS 2 の偽の ss `fake_ss`） | 01・09（ss の型は ss `fa2593c` で版 3） | `fake_ss` 相手に ROS 2 を通して配置図ができる（本物の ss とは、ss が実機で動いてから） |
 | **WP-AUTO-09** ss の口の版 2 | §2.4（後片付けの待ち方・理由 2 つ）を状態機械と偽の ss に入れる | 03 | 偽の ss 相手に、後片付けの上限が長い依頼でも止まらず、`camera_pose_unknown` で一時停止して「走行」で戻る |
 
 **05 は hve が実機に入れたと知らせるまで着手しない。**01〜04・06 は今から進められる（06 は 01 のあと）。**01 が取り込む th の型は、th の作業ブランチ `feat/era3-measure` にある**（2026-11-11 に型だけ先に入れてもらった。[Spec-open.md](../spec/Spec-open.md) §1.2。th の `main` へのマージは確認期の試験のあと）。**`../th-system` の作業ツリーの今のブランチに頼らず、コミット（`a33dd9a`）を固定して取り込む**（th は確認期の試験と測定期の作業でブランチを切り替えるので、作業ツリーの中身は時によって変わる）。
