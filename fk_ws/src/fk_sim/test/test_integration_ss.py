@@ -227,3 +227,35 @@ def test_recheck_depth_measured_false_uses_survey_depth(make_ss_harness):
     assert panel.x == pytest.approx(expected_x)
     assert panel.y == pytest.approx(0.0)
     assert not h.errors
+
+
+def test_ros_ss_port_itself_discards_foreign_cleanup(make_ss_harness):
+    """RosSsPort が他人の goal_id の後片付けの完了を捨てること（Runner の絞り込みとは別に）。"""
+    from fk_auto.ros_ss import RosSsPort
+    h = make_ss_harness(result_delay_ms=800)
+    node = Node('fk_ros_ss_port_probe')
+    port = RosSsPort(node)
+    ex = SingleThreadedExecutor()
+    ex.add_node(node)
+    stop = False
+
+    def spin():
+        while not stop:
+            ex.spin_once(timeout_sec=0.02)
+    t = threading.Thread(target=spin, daemon=True)
+    t.start()
+    try:
+        assert wait_until(lambda: port.status().state == 'IDLE', LONG_S), port.status()
+        rid = port.request(-math.pi, 2 * math.pi, 0.0, 10.0)
+        assert rid and len(rid) == 32
+        h.publish_foreign_cleanup()
+        time.sleep(0.5)
+        assert port.poll_cleanups() == []       # 他人の完了は溜めない
+        got = []
+        assert wait_until(lambda: (got.extend(port.poll_cleanups()), bool(got))[1], LONG_S)
+        assert [c.request_id for c in got] == [rid]
+    finally:
+        stop = True
+        t.join(timeout=2.0)
+        ex.shutdown()
+        node.destroy_node()
