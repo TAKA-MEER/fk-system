@@ -14,3 +14,4 @@ bool ss_front_known      # ss が「正面が分かっている」と返した
 float64 ss_front_yaw     # そのときの ss の正面の向き。参考
 bool front_doubt         # ss の正面と、機体に向いていた辺が違う
 string row_id
+bool depth_measured      # 奥行きを測れたか（2026-11-18。ss の口の版 3）

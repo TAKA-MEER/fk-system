@@ -71,6 +71,7 @@ class PanelView:
     ss_front_yaw: float
     front_doubt: bool
     row_id: str = ""
+    depth_measured: bool = True   # 奥行きを測れたか（2026-11-18。配置図では送信側の値をそのまま）
 
 
 @dataclass
@@ -764,7 +765,7 @@ class Runner:
                                         p.ss_yaw_std_max_deg),
             ss_front_known=rect.front_known,
             ss_front_yaw=edge.ss_front_yaw if edge.ss_front_yaw is not None else 0.0,
-            front_doubt=edge.front_doubt, row_id=row_id)
+            front_doubt=edge.front_doubt, row_id=row_id, depth_measured=rect.depth_measured)
 
     def _set_layout(self, snap, result: Optional[SsResult], th_req: Optional[core.ThStatus]) -> None:
         self._layout_panels, self._core_panels, self._rows, self._unseen = [], {}, [], []
@@ -867,6 +868,9 @@ class Runner:
                                  self.p.ss_yaw_std_max_deg):
             self._skip(SkipEvent.TOP_NOT_FOUND)
             return
+        survey_view = next((v for v in self._layout_panels if v.panel_id == self._cur), None)
+        rect = core.recheck_rect(rect, survey_view.depth_m if survey_view is not None else None,
+                                 old.depth_measured)
         edge = core.front_edge(rect, (req.x, req.y))
         cp = core.make_panel(self._cur, rect, edge)
         self._core_panels[self._cur] = cp
