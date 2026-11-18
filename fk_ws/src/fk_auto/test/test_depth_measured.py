@@ -119,3 +119,23 @@ def test_recheck_measured_uses_recheck_depth_as_is():
     w.until_phase("FINISH")
     panel = w.runner.get_layout().panels[0]
     assert panel.depth_m == pytest.approx(0.9) and panel.depth_measured is True
+
+
+def test_survey_ss_rejected_appears_as_survey_reason():
+    """ss が依頼を断った（reason ss_rejected）: SURVEY は今の作りのまま survey_reason に出る。"""
+    w = World([WPanel(3.0, 0.0)])
+    w.ss.responder = lambda req: SsResponse("ss_rejected")
+    w.to_select()
+    assert w.runner.get_layout().survey_reason == "ss_rejected"
+    assert w.runner.get_layout().panels == []
+
+
+def test_recheck_ss_rejected_skips_with_ss_failed():
+    """RECHECK で ss_rejected は飛ばす（ss_failed）。"""
+    w = World([WPanel(3.0, 0.0)])
+    w.to_select()
+    w.start()
+    w.until_phase("RECHECK")
+    w.ss.responder = lambda req: SsResponse("ss_rejected")
+    w.until_phase("FINISH")
+    assert w.results() == [("P001", "SKIPPED", "ss_failed")]

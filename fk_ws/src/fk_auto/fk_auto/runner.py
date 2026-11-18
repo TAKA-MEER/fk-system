@@ -839,6 +839,9 @@ class Runner:
             self._skip(done.failure)                  # ss_failed
             return
         res = done.result
+        if res.reason == "ss_rejected":
+            self._skip(SkipEvent.SS_TIMEOUT)          # ss が依頼を断った: 飛ばす（ss_failed）
+            return
         if res.reason == "camera_too_low":
             self._skip(SkipEvent.CAMERA_TOO_LOW)
             return
