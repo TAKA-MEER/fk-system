@@ -335,22 +335,32 @@ def make_panel(panel_id: str, rect: MapRect, edge: FrontEdge) -> Panel:
                  rect.depth_measured)
 
 
-def recheck_rect(rect: MapRect, survey_depth_m: Optional[float], survey_measured: bool) -> MapRect:
-    """盤前の認識し直しで奥行きを測れていない盤を、配置図の奥行きで直す（DetailedDesign-auto.md §2.5）。
+def recheck_rect(rect: MapRect, survey_rect: Optional[MapRect]) -> MapRect:
+    """盤前の認識し直しで奥行きを測れていない盤を、配置図の値で直す（DetailedDesign-auto.md §2.5）。
 
-    認識し直した盤が測れていた・配置図のその盤も測れていなかった・配置図の奥行きが無いときは
-    そのまま返す。測れていなくて配置図が測れていたときだけ、ss の基準の辺（機体に向いていた辺）
-    を動かさず、中心を奥へずらす。ずらす量は（配置図の奥行き − ss の奥行き）/ 2 で、向きは
-    基準の辺の外向きの法線と逆（奥は盤の内側）。直した矩形の奥行きは配置図の値になり、
-    depth_measured は True になる。
+    認識し直した盤が測れていた・配置図が無いときはそのまま返す。測れていないときは、
+    認識し直した盤の奥行きの向き（基準の辺の法線）に沿った配置図の長さを使う: 配置図の
+    基準の辺の法線と認識し直しのものの差を π を法として折り返し、45° 以内なら配置図の
+    奥行き（配置図が測れていなければそのまま返す）、そうでなければ配置図の幅（吊り金具の
+    列の長さなので測れている扱い）。ss の基準の辺を動かさず、中心を奥へずらす。ずらす量は
+    （配置図の長さ − ss の奥行き）/ 2 で、向きは基準の辺の外向きの法線と逆（奥は盤の内側）。
+    直した矩形の奥行きは配置図の長さになり、depth_measured は True になる。
     """
-    if rect.depth_measured or not survey_measured or survey_depth_m is None:
+    if rect.depth_measured or survey_rect is None:
         return rect
-    half = (survey_depth_m - rect.depth_m) / 2.0
+    raw = abs(survey_rect.yaw_rad - rect.yaw_rad) % math.pi
+    diff = min(raw, math.pi - raw)     # 向きは問わない（反対の辺も同じ向きとして扱う）
+    if diff <= math.pi / 4.0:
+        if not survey_rect.depth_measured:
+            return rect
+        length = survey_rect.depth_m
+    else:
+        length = survey_rect.width_m   # 幅は吊り金具の列の長さなので測れている扱い
+    half = (length - rect.depth_m) / 2.0
     n = rect.yaw_rad
     return MapRect(
         x=rect.x - half * math.cos(n), y=rect.y - half * math.sin(n), yaw_rad=rect.yaw_rad,
-        width_m=rect.width_m, depth_m=survey_depth_m, pos_std_m=rect.pos_std_m,
+        width_m=rect.width_m, depth_m=length, pos_std_m=rect.pos_std_m,
         yaw_std_deg=rect.yaw_std_deg, lugs=rect.lugs, front_known=rect.front_known,
         front_yaw_rad=rect.front_yaw_rad, depth_measured=True)
 

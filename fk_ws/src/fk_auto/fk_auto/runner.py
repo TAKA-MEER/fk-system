@@ -175,6 +175,7 @@ class Runner:
         self._layout_map_id = ""
         self._layout_panels: List[PanelView] = []
         self._core_panels: Dict[str, core.Panel] = {}
+        self._survey_rects: Dict[str, core.MapRect] = {}   # 配置図の盤ごとの矩形（盤前の補い用）
         self._rows: List[List[str]] = []
         self._unseen: List[Tuple[float, float]] = []
         self._regoal: Dict[str, int] = {}
@@ -569,6 +570,7 @@ class Runner:
         self._enter("IDLE")
         self._cur, self._queue = "", []
         self._layout_map_id, self._layout_panels, self._core_panels = "", [], {}
+        self._survey_rects = {}
         self._rows, self._unseen, self._regoal = [], [], {}
         self._survey_reason = ""
         self._abort = None
@@ -769,6 +771,7 @@ class Runner:
 
     def _set_layout(self, snap, result: Optional[SsResult], th_req: Optional[core.ThStatus]) -> None:
         self._layout_panels, self._core_panels, self._rows, self._unseen = [], {}, [], []
+        self._survey_rects = {}
         self._layout_map_id = th_req.map_instance_id if th_req is not None else (
             snap.th.map_instance_id if snap.th is not None else "")
         if result is None:
@@ -788,6 +791,7 @@ class Runner:
         for (pid, ss_rect, rect, edge), cp in zip(views, cps):
             self._layout_panels.append(self._panel_view(pid, ss_rect, rect, edge, row_of.get(pid, "")))
             self._core_panels[pid] = cp
+            self._survey_rects[pid] = rect
 
     # --- GOAL ---
 
@@ -871,9 +875,7 @@ class Runner:
                                  self.p.ss_yaw_std_max_deg):
             self._skip(SkipEvent.TOP_NOT_FOUND)
             return
-        survey_view = next((v for v in self._layout_panels if v.panel_id == self._cur), None)
-        rect = core.recheck_rect(rect, survey_view.depth_m if survey_view is not None else None,
-                                 old.depth_measured)
+        rect = core.recheck_rect(rect, self._survey_rects.get(self._cur))
         edge = core.front_edge(rect, (req.x, req.y))
         cp = core.make_panel(self._cur, rect, edge)
         self._core_panels[self._cur] = cp
