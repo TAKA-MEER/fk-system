@@ -58,12 +58,16 @@ class SsHarness:
         self.ssnode.fake.responder = self._respond
         self.ssnode.fake.reject_requests = reject
         self.probe = Node('fk_test_ss_probe')
-        self.states, self.layouts, self.results = [], [], []
+        self.states, self.layouts, self.results, self.cleanups = [], [], [], []
         qos = QoSProfile(depth=10, reliability=ReliabilityPolicy.RELIABLE,
                          durability=DurabilityPolicy.TRANSIENT_LOCAL)
         self.probe.create_subscription(AutoState, '/fk/auto/state', self.states.append, qos)
         self.probe.create_subscription(Layout, '/fk/auto/layout', self.layouts.append, qos)
         self.probe.create_subscription(PanelResults, '/fk/auto/results', self.results.append, qos)
+        self.probe.create_subscription(
+            CleanupDone, '/ss/locate/cleanup_done', self.cleanups.append,
+            QoSProfile(depth=10, reliability=ReliabilityPolicy.RELIABLE,
+                       durability=DurabilityPolicy.TRANSIENT_LOCAL))
         self.auto_cmd = self.probe.create_client(AutoCommand, '/fk/auto/command')
         self._cleanup_pub = self.probe.create_publisher(
             CleanupDone, '/ss/locate/cleanup_done',
@@ -259,3 +263,80 @@ def test_ros_ss_port_itself_discards_foreign_cleanup(make_ss_harness):
         t.join(timeout=2.0)
         ex.shutdown()
         node.destroy_node()
+
+
+def test_survey_finish_cancels_ss_and_cleanup_arrives(make_ss_harness):
+    """SURVEY 中に fake_ss が結果を返さない設定で auto.finish を出す。
+    fake_ss が取り消しを受け、後片付けの完了が届いて、状態機械が止まらず先へ進む（IDLE）。"""
+    h = make_ss_harness()
+    h.ssnode.fake.never_result = True
+    h.enter_auto()
+    assert h.command('auto.begin')[0]
+    assert wait_until(lambda: len(h.ssnode.fake.requests) >= 1 and h.phase == 'SURVEY', LONG_S), \
+        h.state
+    assert h.command('auto.finish')[0]
+    assert wait_until(lambda: h.phase == 'IDLE', LONG_S), h.state
+    assert h.ssnode.fake.cancels, 'fake_ss が取り消しを受けていない'
+    assert wait_until(lambda: len(h.cleanups) >= 1, LONG_S), '後片付けの完了が届いていない'
+    assert h.cleanups[-1].reason == 'canceled'
+    assert not h.errors
+
+
+class _FakeFuture:
+    """受け付けの返事をテストが手で届ける偽の future。"""
+
+    def __init__(self):
+        self._result = None
+        self._cbs = []
+
+    def result(self):
+        return self._result
+
+    def add_done_callback(self, cb):
+        self._cbs.append(cb)
+
+    def complete(self, result):
+        self._result = result
+        for cb in list(self._cbs):
+            cb(self)
+
+
+class _FakeHandle:
+    def __init__(self):
+        self.accepted = True
+        self.cancelled = False
+
+    def cancel_goal_async(self):
+        self.cancelled = True
+
+    def get_result_async(self):
+        return _FakeFuture()          # 結果はこの試験では届けない
+
+
+class _FakeClient:
+    def __init__(self):
+        self.future = _FakeFuture()
+        self.handle = _FakeHandle()
+
+    def server_is_ready(self):
+        return True
+
+    def send_goal_async(self, goal, goal_uuid=None):
+        return self.future
+
+
+def test_ros_ss_port_cancels_when_goal_accepted_after_cancel_request():
+    """受けてもらう前に cancel() し、そのあと受けてもらったら cancel_goal_async が呼ばれること。"""
+    from fk_auto.ros_ss import RosSsPort
+    port = object.__new__(RosSsPort)     # 偽の future・handle で十分なのでノードを作らない
+    port._version, port._phase, port._status_ms = '3', 'IDLE', 12345.0
+    port._results, port._cleanups = [], []
+    port._issued, port._handles, port._pending_cancel = set(), {}, set()
+    client = _FakeClient()
+    port._client = client
+    rid = port.request(-math.pi, 2 * math.pi, 0.0, 10.0)
+    assert rid
+    port.cancel(rid)                     # まだ受けてもらっていない
+    assert not client.handle.cancelled
+    client.future.complete(client.handle)   # ss が受け付けた
+    assert client.handle.cancelled, '受けてもらったときに取り消しが送られていない'
