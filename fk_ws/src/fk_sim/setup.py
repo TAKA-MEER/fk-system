@@ -19,6 +19,7 @@ setup(
     entry_points={
         'console_scripts': [
             'fake_th = fk_sim.fake_th:main',
+            'fake_ss = fk_sim.fake_ss:main',
         ],
     },
 )
