@@ -76,9 +76,11 @@ def request_locate(ss_repo, ss_args, out_json):
     result = _run(cmd, env={"ROS_DOMAIN_ID": "78"})
     if result.returncode != 0:
         raise RuntimeError(f"ss への依頼に失敗した:\n{result.stdout}\n{result.stderr}")
-    if not os.path.exists(out_json):
-        raise RuntimeError(f"ss の結果が書かれなかった: {out_json}")
-    with open(out_json, encoding="utf-8") as f:
+    # ss.sh はコンテナ内の相対パス（/ws 相対）に書く。ホスト側は ss_repo を起点として読む。
+    host_path = os.path.join(ss_repo, out_json)
+    if not os.path.exists(host_path):
+        raise RuntimeError(f"ss の結果が書かれなかった: {host_path}")
+    with open(host_path, encoding="utf-8") as f:
         return json.load(f)
 
 
@@ -155,11 +157,13 @@ def main(argv=None):
 
     scene_dir = os.path.abspath(args.scene)
     scene = _load_scene(scene_dir)
-    out_json = args.out or os.path.join(scene_dir, "ss_last.json")
+    # ss の結果は ss.sh locate の保存先（コンテナ内の /ws 相対）に書く。
+    out_json = (args.out or "out/sim_check.json").replace("\\", "/")
     os.makedirs(os.path.dirname(out_json) or ".", exist_ok=True)
     ss_repo = os.environ.get("SS_REPO") or os.path.join(
         os.path.dirname(_HERE), "..", "..", "ss-system")
-    ss_repo = os.path.abspath(ss_repo)
+    ss_repo = os.path.abspath(ss_repo).replace("\\", "/")
+    # Windows の Python は C:\ 形式を返す。bash は C:/ 形式で読める。
 
     robot_pose = (args.x, args.y, args.yaw)
     out = set_robot_pose(args.container, args.x, args.y, args.yaw)
