@@ -82,7 +82,10 @@ def request_locate(ss_repo, ss_args, out_json):
     if result.returncode != 0:
         raise RuntimeError(f"ss への依頼に失敗した:\n{result.stdout}\n{result.stderr}")
     # ss.sh はコンテナ内の相対パス（/ws 相対）に書く。ホスト側は ss_repo を起点として読む。
-    host_path = os.path.join(ss_repo, out_json)
+    # Windows の Python は C:/ 形式で読む（/c/ 形式では読めない）。
+    host_repo = os.environ.get("SS_REPO", ss_repo)
+    host_repo = os.path.abspath(host_repo).replace("\\", "/")
+    host_path = host_repo + "/" + out_json
     if not os.path.exists(host_path):
         raise RuntimeError(f"ss の結果が書かれなかった: {host_path}")
     with open(host_path, encoding="utf-8") as f:
