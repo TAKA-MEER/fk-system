@@ -1,7 +1,22 @@
 """WP-AUTO-10 結合試験: 奥行き 2 m の盤と 1 m の盤を選ぶと、正面側を両方回ったあと
 2 m の盤の背面側を回り、結果に側が付く（偽の th・偽の ss を ROS 2 で通す）。"""
+import pytest
+
 from conftest import wait_until
 from test_integration_ss import SsHarness, ids_of
+
+
+@pytest.fixture
+def make_ss_harness(ros_context):
+    made = []
+
+    def make(**kw):
+        h = SsHarness(**kw)
+        made.append(h)
+        return h
+    yield make
+    for h in made:
+        h.close()
 
 LONG_S = 30.0
 
