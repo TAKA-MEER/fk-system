@@ -122,7 +122,8 @@
 | `sim_fk` | `fk_robot` の像 | 段 3 から（§7） | 試験用のポート（-names.md §6） |
 
 - すべて `network_mode: host`・`ROS_DOMAIN_ID` 78。FastDDS は UDP だけ（th のプロファイル）。
-- **th の Gazebo は画面（`gzclient`）を出さずに起動したい**。今の `gazebo.launch.py` は Gazebo の画面を必ず開くので、th に引数を頼む（申し送りの案）。それまでは `DISPLAY` 無しで起こして gzserver だけが残るかを試す。
+- **th の Gazebo は画面（`gzclient`）を出さずに起こす**: th が引数を足した（2026-11-22。th `feat/era3-measure` の `fc4e2876`。名前の正は th の `gazebo.launch.py`。th の `main` へは確認期の試験のあと）。**それまではそのブランチのコミットから取る**。
+- **th の像は th の `th_ws/Dockerfile` からビルドし直したものを使う**（th の知らせ: 手元の `th_ws-th_robot:latest` は Dockerfile より古く、足りないパッケージがあってビルドや一部のノードの起動に失敗する）。
 - **th のシミュレーション用の機体の LiDAR の高さは 0.105 m で、実機（床から 32 cm）と合っていない**（th が記録済み）。盤は背が高いので今回は効かないが、低い障害物の見え方は実機と違う。
 
 ## 7. 段階
