@@ -178,7 +178,6 @@ class Runner:
         self._survey_rects: Dict[str, core.MapRect] = {}   # 配置図の盤ごとの矩形（盤前の補い用）
         self._rows: List[List[str]] = []
         self._unseen: List[Tuple[float, float]] = []
-        self._regoal: Dict[str, int] = {}
 
         self._reentry_seen = False
         self._stop_id: Optional[str] = None
@@ -279,7 +278,6 @@ class Runner:
         order = core.order_panels(ids, self._rows, list(self._core_panels.values()),
                                   (th.x, th.y))
         self._th_reject_reason = ""
-        self._regoal = {}
         self._cur, self._queue = order[0], order[1:]
         self._enter("LOWER")
         return CommandReply(True)
@@ -571,7 +569,7 @@ class Runner:
         self._cur, self._queue = "", []
         self._layout_map_id, self._layout_panels, self._core_panels = "", [], {}
         self._survey_rects = {}
-        self._rows, self._unseen, self._regoal = [], [], {}
+        self._rows, self._unseen = [], []
         self._survey_reason = ""
         self._abort = None
         self._halt_reason = ""
@@ -882,16 +880,9 @@ class Runner:
         for k, v in enumerate(self._layout_panels):
             if v.panel_id == self._cur:
                 self._layout_panels[k] = self._panel_view(self._cur, ss_rect, rect, edge, v.row_id)
-        stand = (self._arm.stand_pose(cp) if self._arm else core.stand_pose(
-            cp, self.p.stand_distance_min_m, self.p.stand_margin_m))
-        now_pose = Pose(snap.th.x, snap.th.y, snap.th.yaw)
-        if not core.needs_regoal(stand, now_pose, self.p.arrive_tol_m, self.p.arrive_tol_rad):
-            self._enter("AT_PANEL")
-        elif self._regoal.get(self._cur, 0) < self.p.regoal_max:
-            self._regoal[self._cur] = self._regoal.get(self._cur, 0) + 1
-            self._enter("GOAL")                       # 1 回だけ目的地を出し直す
-        else:
-            self._skip(SkipEvent.STAND_MISMATCH_TWICE)
+        # 着いたあとの位置合わせは盤前の作業の側が直接制御の動きで行う（Spec-auto.md §1）。
+        # 立ち位置を求め直しても目的地は出し直さず、そのまま盤前の作業へ進む。
+        self._enter("AT_PANEL")
 
     # --- AT_PANEL ---
 

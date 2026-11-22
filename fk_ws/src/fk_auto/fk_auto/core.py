@@ -40,8 +40,6 @@ class Params:
     lift_state_stale_ms: float = 500
     ss_status_stale_ms: float = 1000
     lift_drift_stop_mm: float = 50
-    arrive_tol_m: float = 0.12
-    arrive_tol_rad: float = 0.12
     stand_distance_min_m: float = 0.389
     stand_margin_m: float = 0.0
     ss_pos_std_max_m: float = 0.15
@@ -56,7 +54,6 @@ class Params:
     # 状態機械（runner.py）が使う値（names.md §5。WP-AUTO-03 で足した）
     reroute_max: int = 3
     blocked_wait_s: float = 5
-    regoal_max: int = 1
     lift_lower_timeout_s: float = 60
     ss_result_timeout_s: float = 300
     ss_cleanup_timeout_s: float = 210
@@ -467,7 +464,7 @@ def stand_pose(panel: Panel, stand_distance_min_m: float, stand_margin_m: float)
 
 
 # ---------------------------------------------------------------------------
-# stand_blocked・needs_regoal・ss_result_valid
+# stand_blocked・ss_result_valid
 # ---------------------------------------------------------------------------
 
 def stand_blocked(grid: Grid, stand: Pose, footprint_half_m: float,
@@ -509,14 +506,6 @@ def stand_blocked(grid: Grid, stand: Pose, footprint_half_m: float,
             if abs(ux) <= h + eps and abs(uy) <= h + eps:
                 return True
     return False
-
-
-def needs_regoal(new_stand: Pose, current: Pose, arrive_tol_m: float,
-                 arrive_tol_rad: float) -> bool:
-    """求め直した立ち位置が今の位置から許容差を超えてずれているか（目的地の出し直しが要るか）。"""
-    if math.hypot(new_stand.x - current.x, new_stand.y - current.y) > arrive_tol_m:
-        return True
-    return abs(angle_diff(new_stand.yaw, current.yaw)) > arrive_tol_rad
 
 
 def ss_result_valid(at_request: Optional[ThStatus], at_result: Optional[ThStatus],
@@ -730,7 +719,6 @@ class SkipEvent(Enum):
     """盤を飛ばす出来事（DetailedDesign-auto.md §2.1。Spec-auto.md §6 の上段）。"""
     PATH_NOT_FOUND = 1           # 経路の再計算をしても解けない
     STAND_AREA_OCCUPIED = 2      # 正面側の床が地図で塞がっていて立てない
-    STAND_MISMATCH_TWICE = 3     # 認識し直した立ち位置が、目的地を 1 回出し直してもまだ許容差を超える
     TOP_NOT_FOUND = 4            # 着いて認識し直しても天面が見つからない（確からしさ不足を含む）
     ARM_SPACE_BLOCKED = 5        # 腕が振れる範囲が左右とも塞がっている（測定機構の口が返す）
     MECHANISM_ABSENT = 6         # 測定機構が付いていない
@@ -753,7 +741,6 @@ class HaltEvent(Enum):
 _SKIP_REASONS = {
     SkipEvent.PATH_NOT_FOUND: "no_path",
     SkipEvent.STAND_AREA_OCCUPIED: "stand_blocked",
-    SkipEvent.STAND_MISMATCH_TWICE: "stand_mismatch",
     SkipEvent.TOP_NOT_FOUND: "top_not_found",
     SkipEvent.ARM_SPACE_BLOCKED: "arm_space_blocked",
     SkipEvent.MECHANISM_ABSENT: "no_mechanism",

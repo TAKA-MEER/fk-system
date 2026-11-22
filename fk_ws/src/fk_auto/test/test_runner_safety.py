@@ -31,7 +31,7 @@ def sc_normal(w):
     w.until_phase("IDLE")
 
 
-def sc_two_rows_and_recheck_regoal(w):
+def sc_two_rows_and_recheck_offset(w):
     w.to_select()
     w.recheck_shift = [0.2, 0.2]
     w.start()
@@ -97,7 +97,7 @@ def sc_halt(w):
     w.cmd("auto.finish", arm_confirmed=True)
 
 
-@pytest.mark.parametrize("scenario", [sc_normal, sc_two_rows_and_recheck_regoal, sc_no_path,
+@pytest.mark.parametrize("scenario", [sc_normal, sc_two_rows_and_recheck_offset, sc_no_path,
                                       sc_jog_and_run, sc_abort, sc_reentry, sc_th_rejects,
                                       sc_drift, sc_halt])
 def test_only_listed_commands_reach_th_in_every_scenario(scenario):
@@ -388,6 +388,6 @@ def test_no_ros_modules_are_imported():
 def test_same_inputs_and_times_give_same_results():
     def run():
         w = World([WPanel(3.0, 0.0), WPanel(3.0, 4.0)])
-        sc_two_rows_and_recheck_regoal(w)
+        sc_two_rows_and_recheck_offset(w)
         return ([(c.command, c.x, c.y, c.at_ms) for c in w.th.sent], w.results(), w.now)
     assert run() == run()

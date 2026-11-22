@@ -277,27 +277,20 @@ def test_recheck_requests_front_half_from_stand_and_goes_to_at_panel():
     assert w.results() == [("P001", "SKIPPED", "no_mechanism")]
 
 
-def test_recheck_updates_layout_and_regoals_once_when_stand_moves_beyond_tolerance():
+def test_recheck_updates_layout_and_goes_to_at_panel_without_new_goal():
+    """認識し直した位置が旧・許容差（0.12 m）を大きく超えていても、GOAL へ戻らず、
+    盤前の作業へ進む（Spec-auto.md §1）。meas.goal は 1 回しか出ない。"""
     w = World([WPanel(3.0, 0.0)])
     w.to_select()
-    w.recheck_shift = [0.2, 0.2]            # 認識し直すと盤が 0.2 m 奥にあった（出し直した先では合う）
+    w.recheck_shift = [0.2, 0.2]            # 認識し直すと盤が 0.2 m 奥にあった
     w.start()
     w.until_phase("FINISH")
     goals = [c for c in w.th.sent if c.command == "meas.goal"]
-    assert len(goals) == 2 and goals[1].x == pytest.approx(STAND_X + 0.2)
-    assert w.runner.get_layout().panels[0].x == pytest.approx(3.2)
+    assert len(goals) == 1                  # 目的地の出し直しをしない
+    assert goals[0].x == pytest.approx(STAND_X)
+    assert w.runner.get_layout().panels[0].x == pytest.approx(3.2)   # 配置図は直す
     assert w.ids() == ["P001"]              # 位置を直しても同じ盤は同じ ID
-    assert w.results() == [("P001", "SKIPPED", "no_mechanism")]
-
-
-def test_recheck_stand_mismatch_twice_skips_stand_mismatch():
-    w = World([WPanel(3.0, 0.0)])
-    w.to_select()
-    w.recheck_shift = [0.2, 0.35]           # 出し直した先でも、盤がさらに奥に見えて、まだ許容差を超える
-    w.start()
-    w.until_phase("FINISH")
-    assert w.results() == [("P001", "SKIPPED", "stand_mismatch")]
-    assert len([c for c in w.th.sent if c.command == "meas.goal"]) == 2
+    assert w.results() == [("P001", "SKIPPED", "no_mechanism")]  # 盤前の作業へ進んだ
 
 
 def test_recheck_top_not_found_when_nothing_returned():
