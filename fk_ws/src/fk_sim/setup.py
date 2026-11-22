@@ -5,7 +5,7 @@ package_name = 'fk_sim'
 setup(
     name=package_name,
     version='0.1.0',
-    packages=[package_name, package_name + '.scene'],
+    packages=[package_name, package_name + '.scene', package_name + '.render'],
     data_files=[
         ('share/ament_index/resource_index/packages', ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
@@ -22,6 +22,7 @@ setup(
         'console_scripts': [
             'fake_th = fk_sim.fake_th:main',
             'fake_ss = fk_sim.fake_ss:main',
+            'fk_sim_render = fk_sim.render.__main__:main',
         ],
     },
 )
