@@ -110,6 +110,26 @@ docker exec sim_hve bash -c '
 
 # --- 6. ss を起こす（ss の起動の作りを写さない） ---------------------------------
 echo "== ss を起こす（$SS_REPO/scripts/ss.sh start）=="
+# ss を起こす（ss の起動の作りを写さない）。
+# Git Bash の /c/... パスを docker Desktop が読めないため、
+# MSYS_NO_PATHCONV=1 で docker を呼ぶ shim を PATH に入れる。
+# shim は止める時に不要になるが、他に影響させるものは無い（パスにだけ入る）。
+mkdir -p "$FK_REPO/.briefs/tmp/docker_shim"
+cat > "$FK_REPO/.briefs/tmp/docker_shim/docker" <<'SHIM'
+#!/usr/bin/env bash
+MSYS_NO_PATHCONV=1 exec "/c/Program Files/Docker/Docker/resources/bin/docker.exe" "$@"
+SHIM
+chmod +x "$FK_REPO/.briefs/tmp/docker_shim/docker"
+export PATH="$FK_REPO/.briefs/tmp/docker_shim:$PATH"
+
+# ss の像は古いモデルの可能性があり（websockets が無い等）、
+# ss の Dockerfile から作り直す（ss のリポジトリは読み取り専用なので、書くのは像だけ）。
+# ss.sh は像が無ければ作るが、あるものは古いままで使ってしまうため先に確認する。
+if ! docker run --rm ss-system:dev python3 -c 'import websockets' >/dev/null 2>&1; then
+  echo "ss の像（ss-system:dev）は古い可能性が高いので、ss の Dockerfile から作り直します"
+  docker build -t ss-system:dev -f "$SS_REPO/docker/Dockerfile" "$SS_REPO"
+fi
+
 bash "$SS_REPO/scripts/ss.sh" start --camera-host 127.0.0.1:18000 --lift-host 127.0.0.1:18080
 
 # --- 7. 記録を残す（sim_down.sh が読む） ------------------------------------------
