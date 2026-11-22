@@ -27,8 +27,8 @@ services:
   sim_th:
     <<: *common
     build:
-      context: ./th_src
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: th_Dockerfile
     image: fk-sim-stack/th:latest
     container_name: sim_th
     # th の Dockerfile は /root/th_ws で colcon build 済み。起動は launch だけ。

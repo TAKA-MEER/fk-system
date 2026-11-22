@@ -43,8 +43,16 @@ bash fk_ws/sim/sim_up.sh <名前>   # 別のシーン
 実行せず止まる（止めない）。** 別の人の作業かもしれないから。
 
 **th の像（`fk-sim-stack/th:latest`）のビルドは初回で時間がかかります。**
-失敗する場合は `docker build -t fk-sim-stack/th:latest -f fk_ws/sim/th_src/Dockerfile fk_ws/sim/th_src`
-を先に回してからこのスクリプトを回してください。
+2 段で作る: th の `th_ws/Dockerfile`（apt 依存等だけビルド。tag `fk-sim-stack/th-base:latest`。
+15 分ほど）→ `fk_ws/sim/th_Dockerfile`（上に th_ws のソースを入れて colcon build）。
+まず `docker compose build` を回して（compose の `build` が `th_Dockerfile` を参照）
+一式を起こす。1 回だけ `docker tag fk-sim-stack/th:latest fk-sim-stack/th-base:latest` を
+事前に実行する。
+
+```bash
+docker build -t fk-sim-stack/th-base:latest -f fk_ws/sim/th_src/Dockerfile fk_ws/sim/th_src
+docker tag fk-sim-stack/th-base:latest fk-sim-stack/th:latest   # 互換のためのタグ付け
+```
 
 **シーンは `fk_ws/src/fk_sim/scenes/public_room.yaml` を読んで生成する。**
 Blender が無い環境では `BLENDER` を設定することか、生成物（`sim_out/scenes/<名前>/scene.json`）が既にあれば
