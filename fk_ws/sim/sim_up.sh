@@ -82,9 +82,7 @@ fi
 # --- 4. compose で sim_th・sim_hve を起こす -------------------------------------
 export WORLD_SRC="$OUT_DIR/world.world"
 export SCENE_DIR_SRC="$OUT_DIR"
-export FK_REPO
-export HVE_REPO
-export SS_REPO
+export FK_REPO HVE_REPO SS_REPO
 
 echo "== compose で sim_th・sim_hve を起こす =="
 echo "注意: th の像（fk-sim-stack/th:latest）のビルドは時間がかかります（初回）"
