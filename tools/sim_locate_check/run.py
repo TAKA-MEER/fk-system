@@ -37,12 +37,17 @@ sys.path.insert(0, _HERE)
 from pose import panel_compare  # noqa: E402
 
 
+# Windows の PATH 上の `bash` は何を指すか分からないので、Git Bash を明示する。
+GIT_BASH = os.environ.get("GIT_BASH", "C:/Program Files/Git/bin/bash.exe")
+
+
 def _run(cmd, env=None):
     full_env = dict(os.environ)
     if env:
         full_env.update(env)
     print("+ " + " ".join(cmd), file=sys.stderr)
-    return subprocess.run(cmd, env=full_env, capture_output=True, text=True)
+    return subprocess.run(cmd, env=full_env, capture_output=True, text=True,
+                          encoding="utf-8", errors="replace")
 
 
 def _yaw_to_quaternion(yaw):
@@ -72,7 +77,7 @@ def set_robot_pose(container, x, y, yaw, name="th_robot"):
 def request_locate(ss_repo, ss_args, out_json):
     """ss の `scripts/ss.sh locate` で依頼し、結果の JSON を読む。"""
     script = ss_repo + "/scripts/ss.sh"
-    cmd = ["bash", script, "locate", "--yes", "--json", out_json] + list(ss_args)
+    cmd = [GIT_BASH, script, "locate", "--yes", "--json", out_json] + list(ss_args)
     result = _run(cmd, env={"ROS_DOMAIN_ID": "78"})
     if result.returncode != 0:
         raise RuntimeError(f"ss への依頼に失敗した:\n{result.stdout}\n{result.stderr}")
