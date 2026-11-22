@@ -247,4 +247,5 @@ th-system の設計思想（SD-1〜SD-9）は**大まかに引き継ぐ**（目�
 | 関連システムとの関係・未確定事項 | [Spec-open.md](Spec-open.md) | 初版 |
 | 測定機構の制御の分担 | [Spec-arm.md](Spec-arm.md) | 初版 |
 | 自律測定の移動の決まり | [Spec-auto.md](Spec-auto.md) | 初版（2026-11-04） |
+| 自律測定のシミュレーション環境 | [Spec-sim.md](Spec-sim.md) | 初版（2026-11-22） |
 | 領域ごとの詳細 | [README.md](README.md) §2 | 未作成 |
