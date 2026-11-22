@@ -28,9 +28,9 @@ colcon build
 source install/setup.bash
 set -u
 
-# 4. 試験（パッケージごとに回す）
+# 4. 試験（パッケージごとに回す。test_scene は ROS 2 なしの生成器の試験）
 rc=0
-for d in src/*/test; do
+for d in src/*/test src/*/test_scene; do
   [ -d "$d" ] || continue
   echo "== pytest $d"
   python3 -m pytest -p no:cacheprovider "$d" || rc=$?
