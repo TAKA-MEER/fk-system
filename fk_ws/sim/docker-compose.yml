@@ -1,0 +1,95 @@
+# シミュレーション一式（WP-SIM-04。DetailedDesign-sim.md §6・§7 の段 2）。
+# `sim_up.sh` が起動し（compose の project 名は fk-sim-stack）、`sim_down.sh` が止める。
+#
+# 起こせるのは sim_th（th の Gazebo）・sim_hve（hve の偽物と描画サービス）だけ。
+# ss は ss-system の `scripts/ss.sh start` で起こす（コンテナ名 ss-system）。
+#
+# すべて `network_mode: host`・ROS_DOMAIN_ID=78・FastDDS は UDP だけ。
+# `th_robot` コンテナには触らない。GPU は渡さない。
+#
+# sim_up.sh が渡す環境変数:
+#   WORLD_SRC      生成したワールド（絶対パス。/sim/world.world にマウント）
+#   SCENE_DIR_SRC  生成物のディレクトリ（絶対パス。/sim/scene にマウント）
+#   ROBOT_X/ROBOT_Y/ROBOT_YAW  シーンの robot.pose（scene.json から）
+#   FK_REPO        fk-system リポジトリ（絶対パス。/work に読み取り専用でマウント）
+#   HVE_REPO       hve-system リポジトリ（絶対パス。/hve に読み取り専用でマウント）
+#   SS_REPO        ss-system リポジトリ（絶対パス。/ss に読み取り専用でマウント）
+
+name: fk-sim-stack
+
+x-common: &common
+  network_mode: host
+  environment:
+    ROS_DOMAIN_ID: "78"
+    FASTRTPS_DEFAULT_PROFILES_FILE: /root/th_ws/scripts/vibe_measure/fastdds_udp.xml
+
+services:
+  sim_th:
+    <<: *common
+    build:
+      context: .
+      dockerfile: th_Dockerfile
+    image: fk-sim-stack/th:latest
+    container_name: sim_th
+    # th の Dockerfile は /root/th_ws で colcon build 済み。起動は launch だけ。
+    # world は絶対パスで渡す（gazebo.launch.py がそのまま使う）。
+    command:
+      - bash
+      - -c
+      - |
+        set -e
+        source /opt/ros/humble/setup.bash
+        source /root/th_ws/install/setup.bash
+        exec ros2 launch th_bringup gazebo.launch.py \
+          sim:=true gui:=false rviz:=false \
+          world:=/sim/world.world \
+          robot_x:=$$ROBOT_X robot_y:=$$ROBOT_Y robot_yaw:=$$ROBOT_YAW
+    environment:
+      ROS_DOMAIN_ID: "78"
+      FASTRTPS_DEFAULT_PROFILES_FILE: /root/th_ws/scripts/vibe_measure/fastdds_udp.xml
+      ROBOT_X: ${ROBOT_X:?}
+      ROBOT_Y: ${ROBOT_Y:?}
+      ROBOT_YAW: ${ROBOT_YAW:?}
+    volumes:
+      - type: bind
+        source: ${WORLD_SRC:?}
+        target: /sim/world.world
+        read_only: true
+    # GPU は渡さない。privileged もいらない。
+
+  sim_hve:
+    image: fk-sim:latest
+    container_name: sim_hve
+    network_mode: host
+    # sim_render（pyrender + OSMesa）は描き続けるとメモリが張るため、
+    # Docker Desktop の既定（2 GiB）で OOM で落とされる。VM の総量（約 15 GiB）の中で
+    # 6 GiB まで使ってよいことにする。
+    mem_limit: 6g
+    environment:
+      ROS_DOMAIN_ID: "78"
+      # UDP だけにするプロファイル（別コンテナの間で shared memory で届かなくなる対策）。
+      # fk-sim の像には th のファイルが無いので、FK_REPO のマウントから読む。
+      FASTRTPS_DEFAULT_PROFILES_FILE: /work/fk_ws/sim/th_src/scripts/vibe_measure/fastdds_udp.xml
+      HVE_REPO: /hve
+      SS_REPO: /ss
+      SCENE_DIR: /sim/scene
+      POSE_SOURCE: gazebo
+      ROBOT_ENTITY: th_robot
+    volumes:
+      - type: bind
+        source: ${FK_REPO:?}
+        target: /work
+        read_only: true
+      - type: bind
+        source: ${HVE_REPO:?}
+        target: /hve
+        read_only: true
+      - type: bind
+        source: ${SS_REPO:?}
+        target: /ss
+        read_only: true
+      - type: bind
+        source: ${SCENE_DIR_SRC:?}
+        target: /sim/scene
+        read_only: true
+    command: [bash, /work/fk_ws/sim/hve_up.sh]

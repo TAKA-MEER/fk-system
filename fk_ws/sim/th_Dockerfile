@@ -1,0 +1,10 @@
+# th の像の上に th_ws のソースを乗せてビルドする層（WP-SIM-04）。
+#
+# th_ws/Dockerfile は、実行時 bind mount (./src:/root/th_ws/src) を前提に
+# th_ws 自身のパッケージをビルドしない（image には sllidar_ros2 等の
+# 外部依存だけが入る）。ここで th_src/src の実物を入れて colcon build する。
+FROM fk-sim-stack/th-base:latest
+
+COPY th_src/src /root/th_ws/src
+
+RUN /bin/bash -c "source /opt/ros/humble/setup.bash && cd /root/th_ws && colcon build"

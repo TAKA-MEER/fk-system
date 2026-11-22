@@ -167,6 +167,37 @@ def test_cache_same_input(renderer_and_box):
     assert r.render_count == n
 
 
+def _rss_kb():
+    with open("/proc/self/status", encoding="ascii") as f:
+        for line in f:
+            if line.startswith("VmRSS:"):
+                return int(line.split()[1])
+    return 0
+
+
+def test_rss_does_not_grow_per_render(renderer_and_box):
+    """同じ Renderer で違う姿勢を数十枚描いても、RSS が 1 枚あたり線形に増えないこと。
+
+    pyrender の OffscreenRenderer を消さずに使い回すと 1 枚あたり約 127 MiB を
+    保持し続けてコンテナが OOM で落ちた（WP-SIM-04 の実測）。
+    """
+    r, _T, _c, pose, _off = renderer_and_box
+    # 暖本体の分を先に描く（初回は文脈の確保で増える）
+    for i in range(3):
+        r.render(pose["x"], pose["y"], pose["yaw"], pose["height_m"],
+                 pose["cam_yaw_deg"] + float(i), pose["cam_pitch_deg"], seed=20 + i)
+    import gc
+    gc.collect()
+    base = _rss_kb()
+    for i in range(30):
+        r.render(pose["x"], pose["y"], pose["yaw"], pose["height_m"],
+                 pose["cam_yaw_deg"] + 3.0 + float(i) * 2.0, pose["cam_pitch_deg"], seed=100 + i)
+    gc.collect()
+    growth_mib = (_rss_kb() - base) / 1024.0
+    # この方法では 30 枚で 100 MiB 程度増える（実シーンでは数 GiB）。直っている場合は平坦。
+    assert growth_mib < 50.0, f"30 枚で RSS が {growth_mib:.0f} MiB 増えた（線形の増え方）"
+
+
 def test_different_pose_changes(renderer_and_box):
     r, _T, _c, pose, _off = renderer_and_box
     before = r.render(pose["x"], pose["y"], pose["yaw"], pose["height_m"],

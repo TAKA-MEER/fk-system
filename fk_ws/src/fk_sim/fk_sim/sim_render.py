@@ -329,6 +329,7 @@ class SimRender:
         self._renderer = None
         self._renderer_lock = threading.Lock()
         self._gz_future = None
+        self._gz_future_sent_at = None
         self._gz_client = None
 
     def log(self, level: str, msg: str):
@@ -406,14 +407,20 @@ class SimRender:
     # --- Gazebo の位置 ---------------------------------------------------------
 
     def poll_gazebo_once(self):
-        """タイマーから呼ぶ。未送信なら送り、終わっていれば位置を取り直す。"""
+        """タイマーから呼ぶ。未送信なら送り、終わっていれば位置を取り直す。
+
+        送った通話が 2 秒以上終わらなければ取り消して送り直す（発見が遅れた
+        ときに 1 通の通話で止まり続けるのを防ぐ。WP-SIM-04 の実測）。
+        """
         if self._gz_client is None:
             return
+        now = time.monotonic()
         if self._gz_future is None:
             from gazebo_msgs.srv import GetEntityState
             req = GetEntityState.Request()
             req.name = str(self.params["robot_entity"])
             self._gz_future = self._gz_client.call_async(req)
+            self._gz_future_sent_at = now
         elif self._gz_future.done():
             try:
                 pose = pose_from_gazebo(self._gz_future.result())
@@ -422,6 +429,9 @@ class SimRender:
                 pose = None
             if pose is not None:
                 self.store.set_pose(*pose)
+            self._gz_future = None
+        elif self._gz_future_sent_at is not None and now - self._gz_future_sent_at > 2.0:
+            self._gz_future.cancel()
             self._gz_future = None
 
     # --- 起動・停止 -------------------------------------------------------------

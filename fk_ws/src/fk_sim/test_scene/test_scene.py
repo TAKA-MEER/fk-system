@@ -299,6 +299,38 @@ def test_blender_glb_matches_answer(tmp_path):
     assert ok, "\n".join(problems)
 
 
+@pytest.mark.skipif(os.environ.get("BLENDER") is None
+                    or not os.path.isfile(os.environ.get("BLENDER", "")),
+                    reason="BLENDER が無いのでリングの向きの確かめは飛ばす")
+def test_blender_lug_ring_faces_panel_center(tmp_path):
+    """金具のリング面の水平方向（局所 x）は盤の中心を向くこと。
+
+    ss は金具 2 個の組から盤が広がる側をリング面の水平の向き（盤の中心を向く）で
+    決める（ss `assemble._pair_center`）。試作の `gen_scene.py` 675 行目（9265d2d）
+    の `ring_yaw = atan2(-y, -x)` と同じ決まり。90° ずらすとssは手前の列を
+    手前へ広げてしまい、盤に組めなくなる（WP-SIM-04 の実測）。
+    """
+    out = os.path.join(str(tmp_path), "blender_out")
+    scene.build_scene(PUBLIC_ROOM, out_dir=out)
+    with open(os.path.join(out, "scene.json"), encoding="utf-8") as f:
+        answer = json.load(f)
+    with open(os.path.join(out, "blender_objects.json"), encoding="utf-8") as f:
+        blender_objects = json.load(f)
+    for p in answer["panels"]:
+        cx, cy = p["center"]
+        for corner, lug in p["lugs"].items():
+            x, y = lug["base"][0], lug["base"][1]
+            obj = blender_objects[f"lug_{p['id']}_{corner}"]
+            yaw = obj["rotation_euler"][2]
+            ring_x = (math.cos(yaw), math.sin(yaw))
+            to_center = (cx - x, cy - y)
+            norm = math.hypot(*to_center)
+            dot = (ring_x[0] * to_center[0] + ring_x[1] * to_center[1]) / norm
+            assert dot > math.cos(math.radians(5.0)), (
+                f"{p['id']} {corner}: リングの向き {math.degrees(yaw):.1f}° が"
+                f"盤の中心への向き {math.degrees(math.atan2(cy - y, cx - x)):.1f}° と平行でない")
+
+
 def test_cli_site_refused_from_outside_cwd(tmp_path):
     """リポジトリの外を cwd にして CLI で site を中の出力先へ書こうとすると止まる。"""
     top = _make_fake_tree(tmp_path)

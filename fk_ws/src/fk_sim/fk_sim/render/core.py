@@ -259,6 +259,12 @@ class Renderer:
                                  camera=self._camera)
         self._cam_node.matrix = _opencv_to_opengl_camera_pose(T_wc)
         color, _depth = self._renderer.render(self._scene)
+        # pyrender の OffscreenRenderer を使い回すと 1 枚あたり約 127 MiB の
+        # メモリを保持し続ける（シーンの使い回しで OOM する）。描くたびに消して
+        # 作り直す（同じ絵はキャッシュで先に返すので、描いた枚数だけコストが乗る）。
+        self._renderer.delete()
+        import pyrender
+        self._renderer = pyrender.OffscreenRenderer(self._w2, self._h2)
         warped = _bilinear(color, self._map_u, self._map_v)
         warped = np.where(self._map_ok[..., None], warped, 0.0)
         out = _post_noise_jpeg(np.clip(warped, 0.0, 255.0).astype(np.uint8), seed)
