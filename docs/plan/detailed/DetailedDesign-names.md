@@ -84,10 +84,10 @@ th 側の名前（`/measure/*`・`/map`・`/ui/active_screen`・`/safety/estop_u
 | 型 | 中身 |
 | --- | --- |
 | `AutoCommand.srv` | `string command` / `string[] panel_ids`（`auto.start` だけ）/ `bool arm_confirmed`（`auto.finish` だけ。画面で腕の確認が済んだ）→ `bool accepted` / `string reject_reason` |
-| `AutoState.msg` | `std_msgs/Header header` / `string phase` / `string panel_id`（いま向かっている・作業中の盤）/ `string[] queue`（残りの順）/ `string halt_reason` / `string gate_reason`（関門で止めている理由。無ければ空）/ `bool lift_at_bottom` / `bool lift_readable` / `bool arm_stowed` / `bool mechanism_attached` / `bool reentry_required` / `string th_mode` / `string th_state` / `string th_reject_reason`（th が最後に指示を拒否した理由。th の理由キーのまま。無ければ空。2026-11-11 に足した。**th の `/measure/command` が見えない・応答が得られないときは、本システムが `th_unreachable` を入れる**）/ **案**: `bool goal_valid` / `float64 goal_x` / `float64 goal_y` / `float64 goal_yaw`（いま向かっている立ち位置。`meas.goal` に出したもの。map フレーム。向かっていなければ `goal_valid` が false。画面の配置図に出す。2026-11-12 [-web.md](DetailedDesign-web.md) §8） |
+| `AutoState.msg` | `std_msgs/Header header` / `string phase` / `string panel_id`（いま向かっている・作業中の盤）/ `string[] queue`（残りの順）/ **案（2026-11-23）**: `string side`（いまの訪問の側。`front` / `back`。訪問が無ければ空）/ `string[] queue_side`（`queue` と同じ並びの側。[-auto.md](DetailedDesign-auto.md) §2.6）/ `string halt_reason` / `string gate_reason`（関門で止めている理由。無ければ空）/ `bool lift_at_bottom` / `bool lift_readable` / `bool arm_stowed` / `bool mechanism_attached` / `bool reentry_required` / `string th_mode` / `string th_state` / `string th_reject_reason`（th が最後に指示を拒否した理由。th の理由キーのまま。無ければ空。2026-11-11 に足した。**th の `/measure/command` が見えない・応答が得られないときは、本システムが `th_unreachable` を入れる**）/ **案**: `bool goal_valid` / `float64 goal_x` / `float64 goal_y` / `float64 goal_yaw`（いま向かっている立ち位置。`meas.goal` に出したもの。map フレーム。向かっていなければ `goal_valid` が false。画面の配置図に出す。2026-11-12 [-web.md](DetailedDesign-web.md) §8） |
 | `Panel.msg` | `string panel_id` / `float64 x` / `float64 y`（天面の中心。map フレーム [m]）/ `float64 front_yaw`（正面の向き。盤から外向き [rad]）/ `float32 width_m` / `float32 depth_m` / `float32 top_height_m` / `float32 pos_std_m` / `float32 yaw_std_deg` / `int32 lugs`（ss の確からしさ。使った吊り金具の数。ss の名前に揃えた）/ `bool confident`（しきい値を満たすか）/ `bool ss_front_known`（ss が「正面が分かっている」と返した）/ `float64 ss_front_yaw`（そのときの ss の正面の向き。参考）/ `bool front_doubt`（ss の正面と、機体に向いていた辺が違う）/ `string row_id` / `bool depth_measured`（奥行きを測れた。2026-11-18。[-auto.md](DetailedDesign-auto.md) §2.5） |
 | `Layout.msg` | `std_msgs/Header header` / `string map_instance_id` / `Panel[] panels` / `float32[] unseen_from_rad` / `float32[] unseen_to_rad`（見ていない方向。map フレーム。ss が返す「実際に見た方位角の範囲」の残り）/ `string survey_reason`（配置図が空・途中で終わった理由。ss が返した終わり方（ss names §3 の `reason`。`completed` のときは空）のまま。結果が来ない・使える結果が得られないときは `ss_failed`。2026-11-11 に足した。ss が依頼を断ったときは `ss_rejected`（2026-11-18））/ **案**: `float64 survey_x` / `float64 survey_y`（全周を ss に依頼した時点の機体の位置。map フレーム。見ていない方向の扇の中心。2026-11-12 [-web.md](DetailedDesign-web.md) §8） |
-| `PanelResult.msg` | `string panel_id` / `string result`（`DONE` / `SKIPPED`）/ `string reason` |
+| `PanelResult.msg` | `string panel_id` / `string result`（`DONE` / `SKIPPED`）/ `string reason` / **案（2026-11-23）**: `string side`（`front` / `back`。訪問の側。[-auto.md](DetailedDesign-auto.md) §2.6。背面側が `SKIPPED` なら奥の 2 隅は「届かず」） |
 | `PanelResults.msg` | `std_msgs/Header header` / `PanelResult[] results` |
 
 ### 4.2 指示（`auto.*`。画面 → `auto_runner`）
@@ -142,6 +142,10 @@ th 側の名前（`/measure/*`・`/map`・`/ui/active_screen`・`/safety/estop_u
 | `lift_lower_timeout_s` | s | 60 | 暫定（下端まで下げきるのを待つ上限。超えたら `lift_not_lowered`） |
 | `stand_distance_min_m` | m | 0.389 | 先方（th Spec-measure §4.4。盤面から機体の中心まで） |
 | `stand_margin_m` | m | 0 | 暫定（`FK-V1`） |
+| `arm_reach_m` | m | 1.76 | 先方（[Spec.md](../spec/Spec.md) §1.3。腕を起こしたとき機体の中心から測定器まで。2026-11-14 ユーザー決定）。`needs_back`。2026-11-23 案 |
+| `front_approach_min_m` | m | 0.58 | 先方（[Spec-auto.md](../spec/Spec-auto.md) §1。前後の並進で寄れる盤面から機体の中心までの距離。th の障害物の停止。実機では未確認）。`needs_back`。2026-11-23 案 |
+| `corner_inset_m` | m | 0.10 | 先方（[Spec.md](../spec/Spec.md) §1.3。四隅は天面の隅から内側 100 mm を狙う）。`needs_back`。2026-11-23 案 |
+| `panel_depth_max_m` | m | 2.04 | 先方（[Spec-auto.md](../spec/Spec-auto.md) §3。背中合わせの盤の奥行きは 1400〜2040 mm になりうる）。奥行きが分からない盤の背面側の立ち位置・`match_back`・`merge_back`。2026-11-23 案 |
 | `arrive_tol_m` | m | 0.12 | 先方（th の到着の許容差） |
 | `arrive_tol_rad` | rad | 0.12 | 先方（同上） |
 | `regoal_max` | 回 | 1 | 仕様（[Spec-auto.md](../spec/Spec-auto.md) §6「目的地を 1 回出し直してもまだ超える」） |
