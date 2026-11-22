@@ -31,9 +31,14 @@ def main():
     ap.add_argument("--ambient", type=float, default=0.12)
     ap.add_argument("--bg", type=float, default=0.45)
     ap.add_argument("--scene-roll", type=float, default=0.0)
-    ap.add_argument("--mesh", default="scene.dae")
+    ap.add_argument("--mesh", default="scene.glb",
+                    help="既定は scene.glb。trimesh でジオメトリ毎にワールド座標の .obj に変換する"
+                         "（Blender の .dae は Gazebo の読み込みで軸変換され、Blender の .obj は"
+                         "オブジェクト変換を焼き込まないため、変換が正しい .glb から作る）")
     ap.add_argument("--sun", type=float, default=0.18)
     ap.add_argument("--point-scale", type=float, default=0.22)
+    ap.add_argument("--rpy-order", choices=["zyx", "xyz"], default="zyx")
+    ap.add_argument("--max-parts", type=int, default=None, help="診断用: obj パーツ数の上限")
     args = ap.parse_args()
 
     out = os.path.abspath(args.out)
@@ -46,8 +51,33 @@ def main():
     jpath = os.path.join(args.export_dir, "camera_lights.json")
     with open(jpath, encoding="utf-8") as f:
         info = json.load(f)
-    mesh_uri = "file://" + os.path.abspath(os.path.join(args.export_dir, args.mesh)).replace("\\", "/")
-    world = build_world(info, mesh_uri, save_dir, args.update_rate, args.ambient, args.bg, args.scene_roll, args.sun, args.point_scale)
+    mesh_path = os.path.join(args.export_dir, args.mesh)
+    if args.mesh.endswith(".glb"):
+        # .dae は Gazebo/OGRE の読み込みで軸が変換され、Blender の .obj はオブジェクトの
+        # ワールド変換を焼き込まない。変換とマテリアルが正しい .glb から、ジオメトリ毎に
+        # ワールド座標の .obj（＋個別の .mtl）を作り、SDF の複数 visual として置く。
+        import trimesh
+        tm = trimesh.load(mesh_path, force="scene")
+        parts_dir = os.path.join(out, "obj_parts")
+        os.makedirs(parts_dir, exist_ok=True)
+        mesh_uri = []
+        for i, g in enumerate(tm.dump()):
+            if args.max_parts is not None and i >= args.max_parts:
+                break
+            opath = os.path.join(parts_dir, f"part_{i}.obj")
+            g.export(opath, include_normals=True)
+            mpath = os.path.join(parts_dir, "material.mtl")
+            if os.path.isfile(mpath):
+                shutil.move(mpath, os.path.join(parts_dir, f"part_{i}.mtl"))
+                with open(opath, encoding="utf-8") as f:
+                    s = f.read()
+                with open(opath, "w", encoding="utf-8") as f:
+                    f.write(s.replace("mtllib material.mtl", f"mtllib part_{i}.mtl"))
+            mesh_uri.append("file://" + os.path.abspath(opath).replace("\\", "/"))
+        print(f"[render_gz] glb -> {len(mesh_uri)} obj parts", flush=True)
+    else:
+        mesh_uri = "file://" + os.path.abspath(mesh_path).replace("\\", "/")
+    world = build_world(info, mesh_uri, save_dir, args.update_rate, args.ambient, args.bg, args.scene_roll, args.sun, args.point_scale, args.rpy_order)
     world_path = os.path.join(out, "scene.world")
     with open(world_path, "w", encoding="utf-8") as f:
         f.write(world)

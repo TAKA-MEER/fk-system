@@ -34,12 +34,23 @@ def rpy_from_matrix(R):
     return roll, pitch, yaw
 
 
-def camera_pose(cam):
+def rpy_from_matrix_xyz(R):
+    """R = Rx(roll) Ry(pitch) Rz(yaw) のときの RPY（診断用。order=xyz のとき使う）。"""
+    pitch = math.asin(max(-1.0, min(1.0, R[0, 2])))
+    roll = math.atan2(-R[1, 2], R[2, 2])
+    yaw = math.atan2(-R[0, 1], R[0, 0])
+    return roll, pitch, yaw
+
+
+def camera_pose(cam, rpy_order="zyx"):
     M = np.array(cam["matrix_world"], float)
     R = M[:3, :3]
     right, up, back = R[:, 0], R[:, 1], R[:, 2]
     Rgz = np.column_stack([-back, -right, up])
-    roll, pitch, yaw = rpy_from_matrix(Rgz)
+    if rpy_order == "xyz":
+        roll, pitch, yaw = rpy_from_matrix_xyz(Rgz)
+    else:
+        roll, pitch, yaw = rpy_from_matrix(Rgz)
     return list(M[:3, 3]) + [roll, pitch, yaw]
 
 
@@ -47,12 +58,12 @@ def fmt(v):
     return " ".join(f"{x:.6f}" for x in v)
 
 
-def build_world(info, mesh_uri, save_path, update_rate, ambient, bg, scene_roll=0.0, sun=0.35, point_scale=0.4):
+def build_world(info, mesh_uri, save_path, update_rate, ambient, bg, scene_roll=0.0, sun=0.35, point_scale=0.4, rpy_order="zyx"):
     # scene_roll: .dae の読み込み側が Z-up を変換してしまった場合に、モデルを回して戻すための診断用オプション
     scene_pose_xml = f"      <pose>0 0 0 {scene_roll:.6f} 0 0</pose>\n" if scene_roll else ""
     cam = info["camera"]
     W, H = cam["resolution"]
-    pose = camera_pose(cam)
+    pose = camera_pose(cam, rpy_order)
     lights = sorted(info.get("lights", []), key=lambda q: q.get("energy", 0.0), reverse=True)
     point_lights = [q for q in lights if q["type"] in {"POINT", "SPOT", "AREA"}][:4]
     light_xml = []
@@ -70,13 +81,24 @@ def build_world(info, mesh_uri, save_path, update_rate, ambient, bg, scene_roll=
       <cast_shadows>false</cast_shadows>
     </light>"""
         )
+    if isinstance(mesh_uri, (list, tuple)):
+        visuals = "".join(
+            f"""      <visual name="visual_{i}">
+        <geometry><mesh><uri>{u}</uri></mesh></geometry>
+      </visual>"""
+            for i, u in enumerate(mesh_uri)
+        )
+    else:
+        visuals = f"""      <visual name="visual">
+        <geometry><mesh><uri>{mesh_uri}</uri></mesh></geometry>
+      </visual>"""
     world = f"""<?xml version="1.0"?>
 <sdf version="1.6">
   <world name="fk_e1">
     <scene>
       <ambient>{ambient} {ambient} {ambient} 1</ambient>
       <background>{bg} {bg} {bg} 1</background>
-      <shadows>true</shadows>
+      <shadows>false</shadows>
     </scene>
     <physics type="ode">
       <max_step_size>0.001</max_step_size>
@@ -84,7 +106,7 @@ def build_world(info, mesh_uri, save_path, update_rate, ambient, bg, scene_roll=
       <real_time_factor>0</real_time_factor>
     </physics>
     <light name="fk_sun" type="directional">
-      <cast_shadows>true</cast_shadows>
+      <cast_shadows>false</cast_shadows>
       <pose>0 0 10 0 0.6 0.4</pose>
       <diffuse>{sun} {sun} {sun} 1</diffuse>
       <specular>0.1 0.1 0.1 1</specular>
@@ -95,13 +117,7 @@ def build_world(info, mesh_uri, save_path, update_rate, ambient, bg, scene_roll=
       <static>true</static>
 {scene_pose_xml}
       <link name="link">
-        <visual name="visual">
-          <geometry>
-            <mesh>
-              <uri>{mesh_uri}</uri>
-            </mesh>
-          </geometry>
-        </visual>
+{visuals}
       </link>
     </model>
     <model name="fk_camera">
