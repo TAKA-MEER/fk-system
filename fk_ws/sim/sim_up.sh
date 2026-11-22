@@ -56,11 +56,12 @@ else
   echo "生成物が残っています（$OUT_DIR。如しき色は再生成しない）"
 fi
 
-python - <<PY
-import json, os
-scene_file = os.path.join("$OUT_DIR", "scene.json").replace("\\", "/")
+python - "$OUT_DIR" "$FK_REPO" <<'PY'
+import json, os, sys
+scene_dir, fk_repo = sys.argv[1], sys.argv[2]
+scene_file = os.path.join(scene_dir, "scene.json").replace("\\", "/")
 pose = json.load(open(scene_file, encoding="utf-8"))["robot"]["pose"]
-open(os.path.join("$FK_REPO", ".briefs/tmp/robot_pose.env"), "w", encoding="utf-8").write("ROBOT_X=%s\nROBOT_Y=%s\nROBOT_YAW=%s\n" % pose)
+open(os.path.join(fk_repo, ".briefs/tmp/robot_pose.env"), "w", encoding="utf-8").write("ROBOT_X=%s\nROBOT_Y=%s\nROBOT_YAW=%s\n" % pose)
 print("robot pose (scene.json):", pose)
 PY
 # shellcheck disable=SC1091
