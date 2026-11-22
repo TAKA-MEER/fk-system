@@ -231,7 +231,7 @@ th 側の名前（`/measure/*`・`/map`・`/ui/active_screen`・`/safety/estop_u
 
 ## 8. シミュレーション環境（案。2026-11-22。[-sim.md](DetailedDesign-sim.md)）
 
-**ユーザーの確認まで、この名前で実装しない。**
+**2026-11-22 ユーザーの続行承認で、`WP-SIM-01` の分（記述・生成器・試験）はこの名前で実装する。**残り（`sim_render`・compose・Dockerfile）は使う作業パケットで見直す。
 
 | 名前 | 種類 | 意味 |
 | --- | --- | --- |
@@ -243,3 +243,6 @@ th 側の名前（`/measure/*`・`/map`・`/ui/active_screen`・`/safety/estop_u
 | `fk_ws/sim/docker-compose.yml` | ファイル | サービス `sim_th`・`sim_hve`・`sim_ss`・`sim_fk` |
 | `fk_ws/sim/Dockerfile` | ファイル | `sim_hve` の像（Blender 4.2・pyrender・hve の偽物の依存） |
 | `scene` | 起動の引数 | 記述のパス |
+| `fk_ws/src/fk_sim/test_scene/` | ディレクトリ | 生成器の試験（ROS 2 なし。`fk_sim/test/conftest.py` が rclpy を読むので分ける）。`test.sh` も回す |
+| `public_room` | 記述の名前 | 最初の広報版の記述（架空の部屋） |
+| `BLENDER` | 環境変数 | 生成器が使う Blender の実行ファイル（無ければ `.glb` を作らず止まる） |
