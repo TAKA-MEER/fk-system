@@ -142,6 +142,9 @@ def bounding_boxes():
         out[obj.name] = {
             "min": [min(c[i] for c in corners) for i in range(3)],
             "max": [max(c[i] for c in corners) for i in range(3)],
+            # 金具（アイボルト）はリング面の水平方向（局所 x）が盤の中心を向く決まりで、
+            # ss が盤の広がる側をこの向きで決める。配置の回転を書き出す（確かめ用）。
+            "rotation_euler": [float(v) for v in obj.rotation_euler],
         }
     return out
 
@@ -200,8 +203,9 @@ def build(desc):
                      "BR": (w / 2 - LUG_INSET, d / 2 - LUG_INSET)}
             for corner in CORNERS:
                 x, y = local_to_world(panel, *local[corner])
-                # リング面の向き（盤中心へ）は見た目だけ。向きは外接箱に効かない。
-                ring_yaw = math.atan2(cy - y, cx - x) + math.pi / 2
+                # リング面の水平方向（リングの局所 x）は盤の中心を向く（ss がこの向きで
+                # 盤の広がる側を決める）。出典: 試作 gen_scene.py 675 行目（9265d2d）。
+                ring_yaw = math.atan2(cy - y, cx - x)
                 add_eyebolt(f"lug_{pid}_{corner}", [x, y, h], ring_yaw, lug_mat)
 
     for i, ob in enumerate(desc["obstacles"]):
