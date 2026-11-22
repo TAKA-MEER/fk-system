@@ -194,8 +194,8 @@ def test_rss_does_not_grow_per_render(renderer_and_box):
                  pose["cam_yaw_deg"] + 3.0 + float(i) * 2.0, pose["cam_pitch_deg"], seed=100 + i)
     gc.collect()
     growth_mib = (_rss_kb() - base) / 1024.0
-    # 直っていない場合は 30 枚で 3 GiB 以上増える。直っている場合は平坦（数百 MiB 以内）。
-    assert growth_mib < 400.0, f"30 枚で RSS が {growth_mib:.0f} MiB 増えた（線形の増え方）"
+    # この方法では 30 枚で 100 MiB 程度増える（実シーンでは数 GiB）。直っている場合は平坦。
+    assert growth_mib < 50.0, f"30 枚で RSS が {growth_mib:.0f} MiB 増えた（線形の増え方）"
 
 
 def test_different_pose_changes(renderer_and_box):
