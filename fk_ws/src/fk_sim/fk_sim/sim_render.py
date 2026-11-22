@@ -105,9 +105,13 @@ def yaw_from_quaternion(x: float, y: float, z: float, w: float) -> float:
 
 
 def pose_from_gazebo(response) -> tuple[float, float, float] | None:
-    """`GetEntityState` の応答 → `(x, y, yaw)`。読めなければ `None`。"""
+    """`GetEntityState` の応答 → `(x, y, yaw)`。読めなければ `None`。
+
+    本物の応答は `state`（`gazebo_msgs/EntityState`）の中に `pose` を持つ。
+    """
     try:
-        pose = response.pose
+        entity = getattr(response, "state", response)
+        pose = entity.pose
         pos, ori = pose.position, pose.orientation
         if not all(_is_number(v) for v in (pos.x, pos.y, ori.x, ori.y, ori.z, ori.w)):
             return None
@@ -273,7 +277,7 @@ def render_frame(store: StateStore, render_fn) -> bytes | None:
 # ---------------------------------------------------------------------------
 # ノード（ROS 2 の部分はここだけ。遅れて読む）
 
-def _start_http_server(node, store, render_fn, port: int):
+def _start_http_server(core, store, render_fn, port: int):
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
     class Handler(BaseHTTPRequestHandler):
@@ -282,9 +286,16 @@ def _start_http_server(node, store, render_fn, port: int):
                 self.send_error(404)
                 return
             try:
+                t0 = time.monotonic()
                 data = render_frame(store, render_fn)
+                if os.environ.get("SIM_RENDER_DEBUG"):
+                    cam, lift_mm, pose = store.snapshot()
+                    core.log("info",
+                             f"/frame cam={cam} lift_mm={lift_mm} pose={pose} "
+                             f"bytes={0 if data is None else len(data)} "
+                             f"took={time.monotonic() - t0:.2f}s")
             except Exception as exc:  # 描画の失敗は 500 で落とす（黙って 503 にしない）
-                node.get_logger().error(f"/frame の描画に失敗した: {exc}")
+                core.log("error", f"/frame の描画に失敗した: {exc}")
                 self.send_error(500)
                 return
             if data is None:
@@ -495,7 +506,10 @@ def main():
         pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        try:
+            rclpy.shutdown()
+        except Exception:
+            pass  # 既に落とされている（終了時の二重呼び出し）
 
 
 if __name__ == "__main__":
