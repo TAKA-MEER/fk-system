@@ -111,7 +111,8 @@ def panel_compare(ss_panel, truth_panel, robot_pose):
     ]
     # 真の四隅は 2D のみで使う（z は高さで無関係）。
     # ss の矩形と真の四隅は向きの定義に依存するので、90° の 4 通りの同相で比べ、
-    # 最大誤差が最も小さい組み合わせの距離を取る。
+    # 最大誤差が最も小さい組み合わせの距離を取る。front_known=False のときは
+    # 表裏が決まらない（180° 回した組も含めて）ので、選んだ向きも返す。
     top = truth_panel.get("top_corners") or {}
     truth_corners = []
     for key in ("FL", "FR", "BR", "BL"):
@@ -123,13 +124,17 @@ def panel_compare(ss_panel, truth_panel, robot_pose):
         for shift in range(4):
             rotated = truth_corners[shift:] + truth_corners[:shift]
             errs = corner_errors(ss_corners_world, rotated)
-            candidates.append((max(errs), errs))
-        corner_errs = min(candidates, key=lambda item: item[0])[1]
+            candidates.append((max(errs), errs, shift))
+        best_max, corner_errs, best_shift = min(candidates, key=lambda item: item[0])
+        # shift 2 は真の四隅を 180° 回した組み合わせ（表裏逆）。
+        corner_side = "back" if best_shift == 2 else "front"
     else:
         corner_errs = []
+        corner_side = "front"
     return {
         "center_err_m": center_err,
         "yaw_err_rad": yaw_err,
         "corner_errs_m": corner_errs,
+        "corner_side": corner_side,
         "distance_m": math.hypot(float(ss_panel["x_m"]), float(ss_panel["y_m"])),
     }

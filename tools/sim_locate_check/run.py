@@ -124,6 +124,7 @@ def compare(result, scene, robot_pose):
             "center_err_m": cmp_["center_err_m"],
             "yaw_err_rad": cmp_["yaw_err_rad"],
             "corner_errs_m": cmp_["corner_errs_m"],
+            "corner_side": cmp_["corner_side"],
             "distance_m": cmp_["distance_m"],
             "truth_center": best_truth["center"],
             "x_m": ss_panel["x_m"], "y_m": ss_panel["y_m"],
@@ -141,13 +142,14 @@ def print_table(rows):
         return "-" if v is None else f"{v:.3f}"
 
     print(f"{'真盤':<6} {'距離m':>7} {'中心のずれm':>11} {'向きのずれrad':>13} "
-          f"{'四隅の最大m':>11} {'四隅の平均m':>11} {'pos_std':>8}")
+          f"{'四隅の最大m':>11} {'四隅の平均m':>11} {'向きの面':>8}")
     for r in rows:
         corner = r["corner_errs_m"]
         max_corner = max(corner) if corner else None
         mean_corner = (sum(corner) / len(corner)) if corner else None
         print(f"{str(r['truth_id']):<6} {r['distance_m']:7.2f} {r['center_err_m']:11.3f} "
-              f"{fmt(r['yaw_err_rad']):>13} {fmt(max_corner):>11} {fmt(mean_corner):>11}")
+              f"{fmt(r['yaw_err_rad']):>13} {fmt(max_corner):>11} {fmt(mean_corner):>11} "
+              f"{r.get('corner_side', 'front'):>8}")
 
 
 def main(argv=None):
