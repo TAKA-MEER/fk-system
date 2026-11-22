@@ -26,6 +26,10 @@ auto_runner:
     ss_max_distance_m: 0.0
     recheck_span_rad: 3.1416
     recheck_match_max_m: 0.3
+    arm_reach_m: 1.76
+    front_approach_min_m: 0.58
+    corner_inset_m: 0.1
+    panel_depth_max_m: 2.04
     ss_retry_max: 2
     ss_pose_tol_m: 0.02
     ss_pose_tol_rad: 0.02

@@ -3,6 +3,8 @@ std_msgs/Header header
 string phase
 string panel_id          # いま向かっている・作業中の盤
 string[] queue           # 残りの順
+string side              # いまの訪問の側。front / back。訪問が無ければ空
+string[] queue_side      # queue と同じ並びの側
 string halt_reason
 string gate_reason       # 関門で止めている理由。無ければ空
 bool lift_at_bottom

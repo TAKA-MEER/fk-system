@@ -41,6 +41,8 @@ class AutoStateView:
     phase: str = "IDLE"
     panel_id: str = ""
     queue: List[str] = field(default_factory=list)
+    side: str = ""               # いまの訪問の側（front / back。訪問が無ければ空）
+    queue_side: List[str] = field(default_factory=list)
     halt_reason: str = ""
     gate_reason: str = ""
     lift_at_bottom: bool = False
@@ -91,6 +93,7 @@ class PanelResultView:
     panel_id: str
     result: str
     reason: str = ""
+    side: str = "front"      # 訪問の側（front / back）。背面側が SKIPPED なら奥の 2 隅は「届かず」
 
 
 # ---------------------------------------------------------------------------
@@ -165,7 +168,10 @@ class Runner:
 
         self._phase = "IDLE"
         self._cur = ""
+        self._cur_side = ""                       # いまの訪問の側（front / back）
         self._queue: List[str] = []
+        self._queue_side: List[str] = []          # _queue と同じ並びの側
+        self._back_wait: List[str] = []           # 背面側の待ち（正面側をすべて終えたら並べ替える）
         self._halt_reason = ""
         self._gate_reason = ""
         self._th_reject_reason = ""
@@ -199,6 +205,7 @@ class Runner:
         s, th, lift = self._snap, self._snap.th, self._snap.lift
         return AutoStateView(
             now_ms=self._now, phase=self._phase, panel_id=self._cur, queue=list(self._queue),
+            side=self._cur_side if self._cur else "", queue_side=list(self._queue_side),
             halt_reason=self._halt_reason, gate_reason=self._gate_reason,
             lift_at_bottom=bool(lift and lift.at_bottom), lift_readable=self._height_readable(s),
             arm_stowed=bool(lift and lift.arm_stowed), mechanism_attached=bool(
@@ -259,6 +266,7 @@ class Runner:
             return self._no("phase_not_accepting")
         self._th_reject_reason = ""
         self._reentry_seen = False
+        self._back_wait = []          # 入り直しで作り直したら背面側の待ちも捨てる（§2.6）
         self._enter("PREPARE")
         return CommandReply(True)
 
@@ -279,6 +287,9 @@ class Runner:
                                   (th.x, th.y))
         self._th_reject_reason = ""
         self._cur, self._queue = order[0], order[1:]
+        self._cur_side = "front"          # 開始時は正面側の訪問だけを並べる（§2.6）
+        self._queue_side = ["front"] * len(self._queue)
+        self._back_wait = []
         self._enter("LOWER")
         return CommandReply(True)
 
@@ -323,7 +334,7 @@ class Runner:
         g = core.gate(core.CMD_SS_REQUEST, self._snap, self.p)
         if not g.allowed:
             return self._no(g.reason)
-        self._cur, self._queue = "", []
+        self._cur, self._queue, self._queue_side, self._cur_side, self._back_wait = "", [], [], "", []
         self._enter("SURVEY")
         return CommandReply(True)
 
@@ -393,7 +404,7 @@ class Runner:
         if self._arm is None:
             return None
         if command == "arm.start":
-            return "ok" if self._arm.start_work(kw["panel_id"]) else None
+            return "ok" if self._arm.start_work(kw["panel_id"], kw.get("side", "front")) else None
         if command == "arm.cancel":
             self._arm.cancel_work()
             return "ok"
@@ -557,6 +568,7 @@ class Runner:
             self._emit("ss.cancel", request_id=job.request_id)
         self._job = None
         self._abort = None
+        self._back_wait = []          # 入り直しで配置図を作り直したら背面側の待ちも捨てる
         self._phase = "REENTRY"
 
     def _to_idle(self) -> None:
@@ -566,7 +578,7 @@ class Runner:
         if self._phase == "AT_PANEL" and self._work_started:
             self._emit("arm.cancel")
         self._enter("IDLE")
-        self._cur, self._queue = "", []
+        self._cur, self._queue, self._queue_side, self._cur_side, self._back_wait = "", [], [], "", []
         self._layout_map_id, self._layout_panels, self._core_panels = "", [], {}
         self._survey_rects = {}
         self._rows, self._unseen = [], []
@@ -579,29 +591,61 @@ class Runner:
         self._stop_id = None
 
     def _back_to_select(self) -> None:
-        self._cur, self._queue, self._abort = "", [], None
+        self._cur, self._queue, self._queue_side, self._cur_side, self._back_wait = "", [], [], "", []
+        self._abort = None
         self._enter("SELECT")
 
-    def _record(self, panel_id: str, result: str, reason: str = "") -> None:
-        rec = PanelResultView(panel_id, result, reason)
+    def _record(self, panel_id: str, result: str, reason: str = "", side: str = "front") -> None:
+        rec = PanelResultView(panel_id, result, reason, side)
         for i, r in enumerate(self._results):
-            if r.panel_id == panel_id:
+            if r.panel_id == panel_id and r.side == side:
                 self._results[i] = rec
                 return
         self._results.append(rec)
 
     def _skip(self, event: SkipEvent) -> None:
-        self._record(self._cur, "SKIPPED", core.classify_skip(event))
+        self._record(self._cur, "SKIPPED", core.classify_skip(event), self._cur_side or "front")
         self._next_panel()
+
+    def _maybe_queue_back(self) -> None:
+        """正面側の AT_PANEL が終わったときに呼ぶ。needs_back が真なら背面側の待ちに足す。
+        正面側の AT_PANEL に届かなかった盤には呼ばない（§2.6）。"""
+        if self._cur_side != "front" or not self._cur:
+            return
+        if self._cur in self._back_wait:
+            return
+        panel = self._core_panels.get(self._cur)
+        if panel is None:
+            return
+        need = self._arm.needs_back(panel) if self._arm is not None else core.needs_back(
+            panel, self.p.arm_reach_m, self.p.front_approach_min_m, self.p.corner_inset_m)
+        if need:
+            self._back_wait.append(self._cur)
 
     def _next_panel(self) -> None:
         self._abort = None
         if self._queue:
             self._cur = self._queue.pop(0)
+            self._cur_side = self._queue_side.pop(0) if self._queue_side else "front"
             self._enter("LOWER")
-        else:
-            self._cur = ""
-            self._enter("FINISH")
+            return
+        if self._back_wait:
+            # 正面側の訪問をすべて終えた。今の位置から order_back で並べ、背面側へ回り込む
+            waiting = [self._core_panels[i] for i in self._back_wait if i in self._core_panels]
+            self._back_wait = []
+            th = self._snap.th
+            cur_xy = (th.x, th.y) if th is not None else (0.0, 0.0)
+            order = core.order_back(waiting, cur_xy, self._rows, self.p.panel_depth_max_m,
+                                    self.p.stand_distance_min_m, self.p.stand_margin_m)
+            if order:
+                self._cur, self._queue = order[0], order[1:]
+                self._cur_side = "back"
+                self._queue_side = ["back"] * len(self._queue)
+                self._enter("LOWER")
+                return
+        self._cur, self._cur_side = "", ""
+        self._queue_side = []
+        self._enter("FINISH")
 
     # ------------------------------------------------------------------ 昇降機を下げる
 
@@ -799,8 +843,14 @@ class Runner:
             self._enter("RECHECK")
             return
         if g.stage == "plan":
-            stand = (self._arm.stand_pose if self._arm else lambda c: core.stand_pose(
-                c, self.p.stand_distance_min_m, self.p.stand_margin_m))(self._core_panels[self._cur])
+            panel = self._core_panels[self._cur]
+            if self._cur_side == "back":
+                stand = self._arm.back_stand_pose(panel) if self._arm else core.back_stand_pose(
+                    panel, self.p.panel_depth_max_m, self.p.stand_distance_min_m,
+                    self.p.stand_margin_m)
+            else:
+                stand = (self._arm.stand_pose if self._arm else lambda c: core.stand_pose(
+                    c, self.p.stand_distance_min_m, self.p.stand_margin_m))(panel)
             grid = self._th.grid() if self._th else None
             if grid is not None and core.stand_blocked(grid, stand, self.p.footprint_half_m,
                                                        self.p.map_occupied_min):
@@ -860,6 +910,9 @@ class Runner:
             self._skip(SkipEvent.TOP_NOT_FOUND)
             return
         old = self._core_panels[self._cur]
+        if self._cur_side == "back":
+            self._recheck_back(old, mp, res)
+            return
         # 同じ盤の選び方: 配置図の中心から recheck_match_max_m 以内で最も近い矩形だけ（隣の盤を取り違えない）
         near = [k for k in range(len(mp.panels))
                 if math.hypot(mp.panels[k].x - old.x, mp.panels[k].y - old.y)
@@ -884,12 +937,46 @@ class Runner:
         # 立ち位置を求め直しても目的地は出し直さず、そのまま盤前の作業へ進む。
         self._enter("AT_PANEL")
 
+    def _recheck_back(self, old, mp, res) -> None:
+        """背面側の認識し直し（§2.6）。match_back で選び、merge_back で配置図の盤を直す。
+        正面の向きは変えない。直せなければ top_not_found。"""
+        chosen = core.match_back(old, mp.panels, self.p.recheck_match_max_m,
+                                 self.p.panel_depth_max_m, self.p.row_yaw_tol_rad)
+        if chosen is None:
+            self._skip(SkipEvent.TOP_NOT_FOUND)
+            return
+        if not core.is_confident(chosen.pos_std_m, chosen.yaw_std_deg,
+                                 self.p.ss_pos_std_max_m, self.p.ss_yaw_std_max_deg):
+            self._skip(SkipEvent.TOP_NOT_FOUND)
+            return
+        merged = core.merge_back(old, chosen, self.p.panel_depth_max_m,
+                                 self.p.recheck_match_max_m)
+        if merged is None:
+            self._skip(SkipEvent.TOP_NOT_FOUND)
+            return
+        i = next(k for k in range(len(mp.panels)) if mp.panels[k] is chosen)
+        ss_rect = res.panels[i]
+        self._core_panels[self._cur] = merged
+        self._survey_rects[self._cur] = chosen
+        for k, v in enumerate(self._layout_panels):
+            if v.panel_id == self._cur:
+                self._layout_panels[k] = PanelView(
+                    panel_id=self._cur, x=merged.x, y=merged.y, front_yaw=merged.front_yaw,
+                    width_m=merged.front_length_m, depth_m=2 * merged.front_half_m,
+                    top_height_m=ss_rect.top_height_m, pos_std_m=chosen.pos_std_m,
+                    yaw_std_deg=chosen.yaw_std_deg, lugs=chosen.lugs, confident=True,
+                    ss_front_known=chosen.front_known,
+                    ss_front_yaw=chosen.front_yaw_rad if chosen.front_known else 0.0,
+                    front_doubt=False, row_id=v.row_id, depth_measured=True)
+        self._enter("AT_PANEL")
+
     # --- AT_PANEL ---
 
     def _do_at_panel(self, snap):
         if not self._work_started:
-            if core._mechanism_absent(snap) or self._emit("arm.start", snap,
-                                                           panel_id=self._cur) is None:
+            if core._mechanism_absent(snap) or self._emit("arm.start", snap, panel_id=self._cur,
+                                                           side=self._cur_side or "front") is None:
+                self._maybe_queue_back()       # 正面側の AT_PANEL が終わった（測定機構なしの道）
                 self._skip(SkipEvent.MECHANISM_ABSENT)   # 測定機構なしの道（設計書 §2.3）
                 return
             self._work_started = True
@@ -903,9 +990,11 @@ class Runner:
                 continue
             self._arm_results.remove(r)
             if r.result == "DONE":
-                self._record(self._cur, "DONE", "")
+                self._maybe_queue_back()       # 正面側の AT_PANEL が終わった
+                self._record(self._cur, "DONE", "", self._cur_side or "front")
                 self._next_panel()
             elif r.result == "SKIPPED":
+                self._maybe_queue_back()
                 self._skip(SkipEvent.ARM_SPACE_BLOCKED)
             elif r.result == "HALT":
                 self._halt(core.classify_halt(HaltEvent.ARM_STUCK))
