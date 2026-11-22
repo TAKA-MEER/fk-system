@@ -94,7 +94,7 @@
 
 **hve に要る変更は [Spec-open.md](../spec/Spec-open.md) §1.2 の申し送り**（上の表の (1)〜(3) と観察の口の確認）。
 
-**hve の名前と形は決まった**（2026-11-22。hve `959e7f4`。正は hve [DetailedDesign.md](../../../../hve-system/docs/plan/detailed/DetailedDesign.md) §4.8・[DetailedDesign-names.md](../../../../hve-system/docs/plan/detailed/DetailedDesign-names.md) §4。写さない）。hve のパケット `WP-CAM-18`・`WP-VIDEO-06`。**hve が「入った」と知らせるまで、この名前で実装しない。**描画サービスが守ること（hve の知らせから。振る舞いだけ）:
+**hve の名前と形は決まった**（2026-11-22。hve `959e7f4`。正は hve [DetailedDesign.md](../../../../hve-system/docs/plan/detailed/DetailedDesign.md) §4.8・[DetailedDesign-names.md](../../../../hve-system/docs/plan/detailed/DetailedDesign-names.md) §4。写さない）。hve のパケット `WP-CAM-18`・`WP-VIDEO-06`。**2026-11-22 に hve の `main` に入った**（`WP-VIDEO-06` `1d960ec`・`WP-CAM-18` `df8fd85`。使い方は hve [docs/使い方.md](../../../../hve-system/docs/使い方.md) §5.1）。**入ったときに振る舞いが 1 つ変わった**: カメラは、古くなった天井を昇降部へ「読めない」として送る（本物の経路にも効く）。描画サービスが送り直しを止めると約 1.2 秒で「読めない」になる。描画サービスが守ること（hve の知らせから。振る舞いだけ）:
 
 - 天井は 200 ms 以下の周期で送り直す（送らなくなると古くなり、昇降部へは読めないとして届く）
 - ヨーの原点合わせは、起動直後は断られるので、通るまで送り直す
