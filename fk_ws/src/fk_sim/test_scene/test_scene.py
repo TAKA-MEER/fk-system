@@ -149,31 +149,59 @@ def test_answer_corners_and_lugs_match_independent_calc():
 
 # --- 守り（site はリポジトリの中へ書けない） ---
 
-def test_site_inside_repo_is_refused_and_nothing_written(tmp_path, monkeypatch):
+def _make_fake_tree(tmp_path):
+    """作業ツリーの形（fk_ws/src/fk_sim の目印）を tmp_path の下に作る。"""
+    top = os.path.join(str(tmp_path), "repo")
+    os.makedirs(os.path.join(top, "fk_ws", "src", "fk_sim"))
+    return top
+
+
+def test_site_inside_repo_is_refused_and_nothing_written(tmp_path):
     data = dict(base_scene(), visibility="site")
     path = write_scene(tmp_path, data)
-    top = os.path.join(str(tmp_path), "repo")
-    monkeypatch.setattr(guard, "repo_toplevel", lambda start=None: top)
+    top = _make_fake_tree(tmp_path)
     inside = os.path.join(top, "sim_out", "x")
     with pytest.raises(guard.GuardError):
         scene.build_scene(path, out_dir=inside)
     assert not os.path.exists(inside), "止めたら何も書いてはいけない"
 
 
-def test_site_outside_repo_is_written(tmp_path, monkeypatch):
+def test_site_refused_from_outside_cwd(tmp_path, monkeypatch):
+    """cwd がリポジトリの外でも、出力先が中なら止まる（cwd に頼らない）。"""
+    top = _make_fake_tree(tmp_path)
+    data = dict(base_scene(), visibility="site")
+    path = write_scene(tmp_path, data)
+    monkeypatch.chdir(tmp_path)  # リポジトリの外の cwd
+    inside = os.path.join(top, "sim_out", "scenes", "leak")
+    with pytest.raises(guard.GuardError):
+        scene.build_scene(path, out_dir=inside)
+    assert not os.path.exists(inside)
+
+
+def test_site_refused_deep_nonexistent_path(tmp_path):
+    """出力先がまだ無い深いパスでも、直下が見つかれば止まる。"""
+    top = _make_fake_tree(tmp_path)
+    data = dict(base_scene(), visibility="site")
+    path = write_scene(tmp_path, data)
+    deep = os.path.join(top, "sim_out", "scenes", "deep", "deeper", "leak2")
+    with pytest.raises(guard.GuardError):
+        scene.build_scene(path, out_dir=deep)
+    assert not os.path.exists(deep)
+
+
+def test_site_outside_repo_is_written(tmp_path):
     data = dict(base_scene(), visibility="site")
     path = write_scene(tmp_path, data)
     out = os.path.join(str(tmp_path), "outside")
-    # toplevel を別の場所に固定すれば、tmp_path の下は「リポジトリの外」になる
-    monkeypatch.setattr(guard, "repo_toplevel", lambda start=None: "/nonexistent_top")
-    scene.build_scene(path, out_dir=out)
-    assert os.path.isfile(os.path.join(out, "world.world"))
-    assert os.path.isfile(os.path.join(out, "scene.json"))
+    a = scene.build_scene(path, out_dir=out)
+    assert os.path.isfile(os.path.join(a[0], "world.world"))
+    assert os.path.isfile(os.path.join(a[0], "scene.json"))
 
 
 def test_guard_allows_public_inside_repo(tmp_path):
+    top = _make_fake_tree(tmp_path)
     scene_data = model.validate_scene(base_scene())
-    assert guard.check_output(scene_data, "/anywhere/sim_out", toplevel="/anywhere")
+    assert guard.check_output(scene_data, os.path.join(top, "sim_out"))
 
 
 # --- リポジトリの中の記述はすべて public ---
@@ -269,6 +297,21 @@ def test_blender_glb_matches_answer(tmp_path):
         blender_objects = json.load(f)
     ok, problems = compare_blender_objects(answer, blender_objects)
     assert ok, "\n".join(problems)
+
+
+def test_cli_site_refused_from_outside_cwd(tmp_path):
+    """リポジトリの外を cwd にして CLI で site を中の出力先へ書こうとすると止まる。"""
+    top = _make_fake_tree(tmp_path)
+    data = dict(base_scene(), visibility="site")
+    path = write_scene(tmp_path, data)
+    out = os.path.join(top, "sim_out", "scenes", "leak2")
+    proc = subprocess.run(
+        [sys.executable, "-m", "fk_sim.scene", "build", path, "--out", out],
+        capture_output=True, text=True, cwd=str(tmp_path),
+        env={**os.environ, "PYTHONPATH": ROOT + os.pathsep + os.environ.get("PYTHONPATH", ""),
+             "BLENDER": ""})
+    assert proc.returncode != 0, (proc.stdout, proc.stderr)
+    assert not os.path.exists(out)
 
 
 def test_cli_build_public_room(tmp_path):

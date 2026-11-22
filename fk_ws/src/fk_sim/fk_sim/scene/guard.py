@@ -21,14 +21,37 @@ def repo_toplevel(start=None):
     return os.path.realpath(out.stdout.strip())
 
 
-def check_output(scene, out_dir, toplevel=None):
+def _tree_root_for(out):
+    """出力先から上へたどり、本システムの作業ツリーの直下を見つける。
+
+    目印は直下の fk_ws/src/fk_sim（worktree でも同じ）。cwd や git に頼らない
+    （リポジトリの外から打つと素通りしていた穴を塞ぐ）。見つからなければ None。
+    出力先がまだ無くても、上へたどれば直下は見つかる。
+    """
+    cur = out
+    while True:
+        if os.path.isdir(os.path.join(cur, "fk_ws", "src", "fk_sim")):
+            return cur
+        parent = os.path.dirname(cur)
+        if parent == cur:
+            return None
+        cur = parent
+
+
+def check_output(scene, out_dir):
     """止める条件なら GuardError。書いてよい出力先の絶対パスを返す。"""
-    toplevel = toplevel if toplevel is not None else repo_toplevel()
-    out = os.path.realpath(out_dir)
-    if scene["visibility"] == "site" and toplevel:
-        top = os.path.realpath(toplevel)
-        if out == top or out.startswith(top + os.sep):
+    try:
+        out = os.path.realpath(out_dir)
+    except (TypeError, ValueError) as e:
+        if scene["visibility"] == "site":
+            raise GuardError(f"site の出力先（{out_dir!r}）を解決できません。書かずに止めます: {e}") from e
+        raise
+    if scene["visibility"] == "site":
+        top = _tree_root_for(out)
+        # ルートまでたどって目印が無ければ作業ツリーの外なので書いてよい。
+        # （パスが解決できないときは上の except で止める）
+        if top is not None and (out == top or out.startswith(top + os.sep)):
             raise GuardError(
-                f"visibility: site の記述の出力先が本リポジトリの中にあります（{out}）。"
-                "site の出力はリポジトリの外へ出してください。")
+                f"visibility: site の記述の出力先が本リポジトリの中にあります（{out}）:"
+                f" {top} の下。site の出力はリポジトリの外へ出してください。")
     return out
