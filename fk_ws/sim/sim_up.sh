@@ -58,9 +58,10 @@ fi
 
 python - <<PY
 import json, os
-scene = json.load(open(os.path.join("$OUT_DIR", "scene.json"), encoding="utf-8"))["robot"]["pose"]
-open(os.path.join("$FK_REPO", ".briefs/tmp/robot_pose.env"), "w", encoding="utf-8").write("ROBOT_X=%s\nROBOT_Y=%s\nROBOT_YAW=%s\n" % scene)
-print("robot pose (scene.json):", scene)
+scene_file = os.path.join("$OUT_DIR", "scene.json").replace("\\", "/")
+pose = json.load(open(scene_file, encoding="utf-8"))["robot"]["pose"]
+open(os.path.join("$FK_REPO", ".briefs/tmp/robot_pose.env"), "w", encoding="utf-8").write("ROBOT_X=%s\nROBOT_Y=%s\nROBOT_YAW=%s\n" % pose)
+print("robot pose (scene.json):", pose)
 PY
 # shellcheck disable=SC1091
 . "$FK_REPO/.briefs/tmp/robot_pose.env"
