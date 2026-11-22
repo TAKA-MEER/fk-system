@@ -12,6 +12,14 @@
 #     （既定 sim_out/scenes/public_room。リポジトリ直下からの相対）
 set -uo pipefail
 
+# sim_render は rclpy を読む（ROS の環境が要る。fk_ws/Dockerfile と同じ守り）
+if [ -f /opt/ros/humble/setup.bash ]; then
+  set +u
+  # shellcheck disable=SC1091
+  . /opt/ros/humble/setup.bash
+  set -u
+fi
+
 HVE_REPO="${HVE_REPO:-../hve-system}"
 HVE_PYTHON="${HVE_PYTHON:-/opt/hve-venv/bin/python}"
 SCENE_DIR="${SCENE_DIR:-sim_out/scenes/public_room}"
@@ -53,13 +61,13 @@ PIDS+=($!)
 wait_port 127.0.0.1 "$LIFT_PORT" 15
 
 echo "hve_up: カメラの偽物（$CAMERA_PORT。昇降部は 127.0.0.1:$LIFT_PORT）"
-(cd "$HVE_REPO/camera" && PYTHONPATH="$HVE_REPO/camera" "$HVE_PYTHON" -m hve_camera \
+(cd "$HVE_REPO/camera" && PYTHONPATH="$HVE_REPO/camera" exec "$HVE_PYTHON" -m hve_camera \
   --fake --lift "127.0.0.1:$LIFT_PORT" --port "$CAMERA_PORT") &
 PIDS+=($!)
 wait_port 127.0.0.1 "$CAMERA_PORT" 15
 
 echo "hve_up: 映像の偽物（$VIDEO_PORT。絵は http://127.0.0.1:$FRAME_PORT/frame）"
-(cd "$HVE_REPO/camera" && PYTHONPATH="$HVE_REPO/camera" "$HVE_PYTHON" -m hve_video \
+(cd "$HVE_REPO/camera" && PYTHONPATH="$HVE_REPO/camera" exec "$HVE_PYTHON" -m hve_video \
   --fake --frame-url "http://127.0.0.1:$FRAME_PORT/frame" --port "$VIDEO_PORT") &
 PIDS+=($!)
 wait_port 127.0.0.1 "$VIDEO_PORT" 15
