@@ -37,6 +37,9 @@ desktop.ini
 # herdr/orca 用の実装ブリーフ置き場（共有しない）
 .briefs/
 
+# FK-E1 のスパイク（Blender のシーン・書き出し・描いた絵・検出の結果）。再生成できるので共有しない
+/sim_out/
+
 # fk_ws（colcon の生成物と、th から取り込んだもの。fk_ws/scripts/import_th.sh が作る）
 fk_ws/build/
 fk_ws/install/
