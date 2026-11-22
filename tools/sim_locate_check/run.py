@@ -190,8 +190,9 @@ def main(argv=None):
     result = request_locate(ss_repo, ss_args, out_json)
     took = time.time() - t0
     print(f"ss の応答が来た（{took:.1f} s。結果: {out_json}）")
-    print(f"reason: {result.get('reason')}")
-    rows = compare(result, scene, robot_pose)
+    inner = result.get("result", result)
+    print(f"reason: {inner.get('reason')}")
+    rows = compare(inner, scene, robot_pose)
     if not rows:
         print("見つかった盤はありません")
         return 0

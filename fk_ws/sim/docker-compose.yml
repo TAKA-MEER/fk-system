@@ -70,7 +70,6 @@ services:
       # UDP だけにするプロファイル（別コンテナの間で shared memory で届かなくなる対策）。
       # fk-sim の像には th のファイルが無いので、FK_REPO のマウントから読む。
       FASTRTPS_DEFAULT_PROFILES_FILE: /work/fk_ws/sim/th_src/scripts/vibe_measure/fastdds_udp.xml
-      SIM_RENDER_DEBUG: "1"
       HVE_REPO: /hve
       SS_REPO: /ss
       SCENE_DIR: /sim/scene
