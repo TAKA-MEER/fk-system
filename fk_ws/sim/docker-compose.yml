@@ -61,6 +61,10 @@ services:
     image: fk-sim:latest
     container_name: sim_hve
     network_mode: host
+    # sim_render（pyrender + OSMesa）は描き続けるとメモリが張るため、
+    # Docker Desktop の既定（2 GiB）で OOM で落とされる。VM の総量（約 15 GiB）の中で
+    # 6 GiB まで使ってよいことにする。
+    mem_limit: 6g
     environment:
       ROS_DOMAIN_ID: "78"
       # UDP だけにするプロファイル（別コンテナの間で shared memory で届かなくなる対策）。
