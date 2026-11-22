@@ -30,6 +30,8 @@ FRAME_PORT="${FRAME_PORT:-18100}"
 FIXED_X="${FIXED_X:-6.0}"
 FIXED_Y="${FIXED_Y:-2.5}"
 FIXED_YAW="${FIXED_YAW:-1.5708}"
+POSE_SOURCE="${POSE_SOURCE:-fixed}"
+ROBOT_ENTITY="${ROBOT_ENTITY:-th_robot}"
 
 PIDS=()
 cleanup() {
@@ -72,13 +74,14 @@ echo "hve_up: 映像の偽物（$VIDEO_PORT。絵は http://127.0.0.1:$FRAME_POR
 PIDS+=($!)
 wait_port 127.0.0.1 "$VIDEO_PORT" 15
 
-echo "hve_up: sim_render（絵 $FRAME_PORT。位置は fixed $FIXED_X,$FIXED_Y,$FIXED_YAW）"
+echo "hve_up: sim_render（絵 $FRAME_PORT。位置は $POSE_SOURCE）"
 python3 -m fk_sim.sim_render --ros-args \
   -p "scene_dir:=$SCENE_DIR" \
   -p "frame_port:=$FRAME_PORT" \
   -p "camera_host:=127.0.0.1:$CAMERA_PORT" \
   -p "lift_host:=127.0.0.1:$LIFT_PORT" \
-  -p "pose_source:=fixed" \
+  -p "pose_source:=$POSE_SOURCE" \
+  -p "robot_entity:=$ROBOT_ENTITY" \
   -p "fixed_x:=$FIXED_X" -p "fixed_y:=$FIXED_Y" -p "fixed_yaw:=$FIXED_YAW" &
 PIDS+=($!)
 wait_port 127.0.0.1 "$FRAME_PORT" 15
