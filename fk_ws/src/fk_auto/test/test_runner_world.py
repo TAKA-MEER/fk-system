@@ -9,7 +9,7 @@ from typing import List, Optional
 
 from fk_auto import core
 from fk_auto.core import Params, SsRect
-from fk_auto.fakes import FakeArm, FakeLift, FakeSs, FakeTh, Sim, SsResponse, ThModel
+from fk_auto.fakes import FakeArm, FakeLift, FakeSs, FakeTh, Sim, SsResponse, ThModel, facing_ss_rect
 from fk_auto.ports import NoMechanism
 from fk_auto.runner import Runner
 
@@ -25,16 +25,29 @@ class WPanel:
     d: float = 0.6
     pos_std: float = 0.02
     yaw_std: float = 1.0
+    unmeasured: bool = False   # 奥行きを測れていない盤（正面側では 0.86 m を返す。背面側から見れば測れる）
 
 
 def body_rect(wp: WPanel, pose, **over) -> SsRect:
-    dx, dy = wp.x - pose.x, wp.y - pose.y
-    c, s = math.cos(pose.yaw), math.sin(pose.yaw)
-    kw = dict(x_m=c * dx + s * dy, y_m=-s * dx + c * dy, yaw_rad=core.wrap_angle(wp.yaw - pose.yaw),
-              width_m=wp.w, depth_m=wp.d, pos_std_m=wp.pos_std, yaw_std_deg=wp.yaw_std, lugs=4,
-              top_height_m=2.35)
-    kw.update(over)
-    return SsRect(**kw)
+    """世界の盤を機体基準の矩形にする。ss は機体に向いていた辺を基準に返すので、
+    背面側から見れば背面が基準の辺（向きが反対）になる奧行きが測れていない盤は、
+    正面側では 0.86 m を返す（fakes.facing_ss_rect の置き方）。"""
+    fx, fy = math.cos(wp.yaw), math.sin(wp.yaw)
+    front_side = (pose.x - wp.x) * fx + (pose.y - wp.y) * fy > 0
+    kw_over = dict(over)
+    if "depth_m" in kw_over:   # 明示の上書き（既存の試験用）: 中心は世界のまま
+        d = kw_over.pop("depth_m")
+        meas = kw_over.pop("depth_measured", True)
+        return facing_ss_rect(wp.x, wp.y, wp.yaw, wp.w, d, pose,
+                              depth_measured=meas, pos_std_m=wp.pos_std,
+                              yaw_std_deg=wp.yaw_std, **kw_over)
+    kw_over.pop("depth_measured", None)
+    if wp.unmeasured and front_side:
+        return facing_ss_rect(wp.x, wp.y, wp.yaw, wp.w, wp.d, pose, assumed_depth_m=0.86,
+                              depth_measured=False, pos_std_m=wp.pos_std,
+                              yaw_std_deg=wp.yaw_std, **kw_over)
+    return facing_ss_rect(wp.x, wp.y, wp.yaw, wp.w, wp.d, pose,
+                          pos_std_m=wp.pos_std, yaw_std_deg=wp.yaw_std, **kw_over)
 
 
 def visible(wp: WPanel, pose, frm: float, span: float, max_d: float) -> bool:
@@ -75,7 +88,7 @@ class World:
         if req.azimuth_span_rad < TWO_PI - 1e-6 and self.recheck_shift:   # 盤前の認識し直し
             shift = self.recheck_shift.pop(0)
         rects = tuple(body_rect(WPanel(wp.x + shift, wp.y, wp.yaw, wp.w, wp.d, wp.pos_std,
-                                       wp.yaw_std), pose)
+                                       wp.yaw_std, wp.unmeasured), pose)
                       for i, wp in enumerate(self.panels)
                       if i not in self.hide and visible(wp, pose, req.azimuth_from_rad,
                                                         req.azimuth_span_rad, req.max_distance_m))
@@ -127,6 +140,9 @@ class World:
 
     def results(self):
         return [(r.panel_id, r.result, r.reason) for r in self.runner.get_results()]
+
+    def results_side(self):
+        return [(r.panel_id, r.result, r.reason, r.side) for r in self.runner.get_results()]
 
     def th_cmds(self):
         return self.th.commands()
