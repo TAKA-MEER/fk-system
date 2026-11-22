@@ -228,3 +228,18 @@ th 側の名前（`/measure/*`・`/map`・`/ui/active_screen`・`/safety/estop_u
 | `docs/plan/detailed/mockup/index.html` | 画面のモックアップ（見た目の正。th の CSS を `th_ref` のコミットから写してある。写しはここだけ） | 入れる |
 | `fk_ws/src/fk_sim/launch/sim.launch.py` | **案**。試験用の起動（`auto_runner_sim`・`fake_th`・rosbridge 2 本・画面の配信を試験用のポートで。[-web.md](DetailedDesign-web.md) §1.4） | 入れる |
 | 画面の試験の様子の差し込み | **案**。Playwright の試験で `window.__fkTestState` に様子を入れると、rosbridge につながずに描く（th の `__thTestState` と同じ形） | — |
+
+## 8. シミュレーション環境（案。2026-11-22。[-sim.md](DetailedDesign-sim.md)）
+
+**ユーザーの確認まで、この名前で実装しない。**
+
+| 名前 | 種類 | 意味 |
+| --- | --- | --- |
+| `fk_ws/src/fk_sim/scenes/<名前>.yaml` | ファイル | 広報版のシーンの記述（`visibility: public` だけ） |
+| `visibility` | 記述の欄 | `public` ／ `site` |
+| `fk_sim.scene` | Python のモジュール | 生成器（記述の読み込み・ワールド・正解）。Blender のバッチのスクリプトは `fk_ws/src/fk_sim/blender/build_scene.py` |
+| `sim_out/scenes/<名前>/` | ディレクトリ（git に入れない） | 生成器の出力 `world.world`・`scene.glb`・`scene.json` |
+| `sim_render` | ノード（`fk_sim`） | 描画サービス |
+| `fk_ws/sim/docker-compose.yml` | ファイル | サービス `sim_th`・`sim_hve`・`sim_ss`・`sim_fk` |
+| `fk_ws/sim/Dockerfile` | ファイル | `sim_hve` の像（Blender 4.2・pyrender・hve の偽物の依存） |
+| `scene` | 起動の引数 | 記述のパス |
