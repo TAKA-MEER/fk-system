@@ -42,13 +42,18 @@ def _overrides(params):
     return [Parameter(k, value=v) for k, v in params.items()]
 
 
-def body_rect(wx, wy, wyaw, pose, w=1.0, d=0.6):
-    """世界の盤（地図の座標）を、th の位置を基準にした機体基準の矩形にする。"""
-    dx, dy = wx - pose[0], wy - pose[1]
-    c, s = math.cos(pose[2]), math.sin(pose[2])
-    return core.SsRect(x_m=c * dx + s * dy, y_m=-s * dx + c * dy,
-                       yaw_rad=core.wrap_angle(wyaw - pose[2]), width_m=w, depth_m=d,
-                       pos_std_m=0.02, yaw_std_deg=1.0, lugs=4, top_height_m=2.35)
+def body_rect(wx, wy, wyaw, pose, w=1.0, d=0.6, unmeasured=False):
+    """世界の盤（地図の座標）を、th の位置を基準にした機体基準の矩形にする。
+    ss は機体に向いていた辺を基準に返す（背面側から見れば背面が基準の辺）。
+    奥行きが測れていない盤（unmeasured）は正面側では 0.86 m を返す。"""
+    from fk_auto.fakes import facing_ss_rect
+    p = core.Pose(pose[0], pose[1], pose[2])
+    if unmeasured:
+        fx, fy = math.cos(wyaw), math.sin(wyaw)
+        if (pose[0] - wx) * fx + (pose[1] - wy) * fy > 0:
+            return facing_ss_rect(wx, wy, wyaw, w, d, p, assumed_depth_m=0.86,
+                                  depth_measured=False)
+    return facing_ss_rect(wx, wy, wyaw, w, d, p)
 
 
 class Harness:

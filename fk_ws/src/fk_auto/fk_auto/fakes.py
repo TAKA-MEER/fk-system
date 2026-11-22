@@ -498,6 +498,40 @@ class FakeSs(SsPort):
 
 
 # ---------------------------------------------------------------------------
+# ss の偽物の盤の置き方（WP-AUTO-10）
+# ---------------------------------------------------------------------------
+
+def facing_ss_rect(world_x: float, world_y: float, front_yaw: float, width_m: float,
+                   depth_true_m: float, pose, assumed_depth_m: Optional[float] = None,
+                   depth_measured: bool = True, pos_std_m: float = 0.02,
+                   yaw_std_deg: float = 1.0) -> core.SsRect:
+    """世界の盤を、依頼した時点の機体基準の ss 矩形にする（偽物の置き方）。
+
+    ss は機体に向いていた辺を基準に矩形を返す（背面側から見れば背面が基準の辺）。
+    奥行きが測れていない盤（assumed_depth_m が与えられたとき）は、基準の辺に
+    基準を置いて中心をずらして 0.86 m の奥行きを返す（背面側から見れば測れる盤は
+    assumed_depth_m を与えず、真の奥行きを測れたものとして返す）。
+    """
+    fx, fy = math.cos(front_yaw), math.sin(front_yaw)
+    rel_x, rel_y = pose.x - world_x, pose.y - world_y
+    if rel_x * fx + rel_y * fy > 0:
+        facing_yaw = front_yaw                 # 正面側から見ている
+    else:
+        facing_yaw = core.wrap_angle(front_yaw + math.pi)   # 背面側から見ている
+    ux, uy = math.cos(facing_yaw), math.sin(facing_yaw)
+    assumed = depth_true_m if assumed_depth_m is None else assumed_depth_m
+    cx = world_x + ((depth_true_m - assumed) / 2.0) * ux
+    cy = world_y + ((depth_true_m - assumed) / 2.0) * uy
+    dx, dy = cx - pose.x, cy - pose.y
+    c, s = math.cos(pose.yaw), math.sin(pose.yaw)
+    return core.SsRect(x_m=c * dx + s * dy, y_m=-s * dx + c * dy,
+                       yaw_rad=core.wrap_angle(facing_yaw - pose.yaw),
+                       width_m=width_m, depth_m=assumed, pos_std_m=pos_std_m,
+                       yaw_std_deg=yaw_std_deg, lugs=4, top_height_m=2.35,
+                       depth_measured=depth_measured)
+
+
+# ---------------------------------------------------------------------------
 # FakeArm（AT_PANEL の行を試験するための小さな測定機構。Python の中だけの名前）
 # ---------------------------------------------------------------------------
 
@@ -512,6 +546,7 @@ class FakeArm(ArmPort):
         self.outcome = outcome
         self.stowed: Optional[bool] = True
         self.starts: List[str] = []
+        self.start_sides: List[str] = []
         self.cancels = 0
         self.pauses: List[bool] = []
         self._now = 0.0
@@ -528,11 +563,20 @@ class FakeArm(ArmPort):
     def stand_pose(self, panel: core.Panel) -> core.Pose:
         return core.stand_pose(panel, self._p.stand_distance_min_m, self._p.stand_margin_m)
 
+    def back_stand_pose(self, panel: core.Panel) -> core.Pose:
+        return core.back_stand_pose(panel, self._p.panel_depth_max_m,
+                                    self._p.stand_distance_min_m, self._p.stand_margin_m)
+
+    def needs_back(self, panel: core.Panel) -> bool:
+        return core.needs_back(panel, self._p.arm_reach_m, self._p.front_approach_min_m,
+                               self._p.corner_inset_m)
+
     def arm_stowed(self) -> Optional[bool]:
         return self.stowed
 
-    def start_work(self, panel_id: str) -> bool:
+    def start_work(self, panel_id: str, side: str = "front") -> bool:
         self.starts.append(panel_id)
+        self.start_sides.append(side)
         self._work = {"due": self._now + self.work_ms,
                       "result": ArmResult(panel_id, self.outcome[0], self.outcome[1])}
         return True

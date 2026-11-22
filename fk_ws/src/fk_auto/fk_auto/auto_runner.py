@@ -238,6 +238,7 @@ class AutoRunner(Node):
         m = AutoState()
         m.header.stamp = self.get_clock().now().to_msg()
         m.phase, m.panel_id, m.queue = v.phase, v.panel_id, list(v.queue)
+        m.side, m.queue_side = v.side, list(v.queue_side)
         m.halt_reason = v.halt_reason
         m.gate_reason = v.gate_reason or self._th_gate_reason()
         m.lift_at_bottom, m.lift_readable = v.lift_at_bottom, v.lift_readable
@@ -248,7 +249,7 @@ class AutoRunner(Node):
 
     @staticmethod
     def _state_key(m):
-        return (m.phase, m.panel_id, tuple(m.queue), m.halt_reason, m.gate_reason,
+        return (m.phase, m.panel_id, tuple(m.queue), m.side, tuple(m.queue_side), m.halt_reason, m.gate_reason,
                 m.lift_at_bottom, m.lift_readable, m.arm_stowed, m.mechanism_attached,
                 m.reentry_required, m.th_mode, m.th_state, m.th_reject_reason)
 
@@ -286,7 +287,7 @@ class AutoRunner(Node):
             rm.header.stamp = self.get_clock().now().to_msg()
             for r in res:
                 prm = PanelResult()
-                prm.panel_id, prm.result, prm.reason = r.panel_id, r.result, r.reason
+                prm.panel_id, prm.result, prm.reason, prm.side = r.panel_id, r.result, r.reason, r.side
                 rm.results.append(prm)
             self._results_pub.publish(rm)
 

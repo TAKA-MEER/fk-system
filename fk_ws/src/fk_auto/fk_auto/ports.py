@@ -139,13 +139,21 @@ class ArmPort(ABC):
         """盤ごとの立ち位置（最初の版は core.stand_pose を呼ぶ）。"""
 
     @abstractmethod
+    def back_stand_pose(self, panel: core.Panel) -> core.Pose:
+        """背面側の立ち位置（最初の版は core.back_stand_pose を呼ぶ）。"""
+
+    @abstractmethod
+    def needs_back(self, panel: core.Panel) -> bool:
+        """背面側の訪問が要るか（最初の版は core.needs_back を呼ぶ）。"""
+
+    @abstractmethod
     def arm_stowed(self) -> Optional[bool]:
         """腕が格納位置か（None は読めない）。Runner は昇降機の状態（LiftStatus）から読むので、
         今のところ使わない。"""
 
     @abstractmethod
-    def start_work(self, panel_id: str) -> bool:
-        """盤前の作業を始める。受けなければ False（NoMechanism）。"""
+    def start_work(self, panel_id: str, side: str = "front") -> bool:
+        """盤前の作業を始める。side は訪問の側（front / back）。受けなければ False。"""
 
     @abstractmethod
     def cancel_work(self) -> None:
@@ -168,10 +176,18 @@ class NoMechanism(ArmPort):
     def stand_pose(self, panel: core.Panel) -> core.Pose:
         return core.stand_pose(panel, self._p.stand_distance_min_m, self._p.stand_margin_m)
 
+    def back_stand_pose(self, panel: core.Panel) -> core.Pose:
+        return core.back_stand_pose(panel, self._p.panel_depth_max_m,
+                                    self._p.stand_distance_min_m, self._p.stand_margin_m)
+
+    def needs_back(self, panel: core.Panel) -> bool:
+        return core.needs_back(panel, self._p.arm_reach_m, self._p.front_approach_min_m,
+                               self._p.corner_inset_m)
+
     def arm_stowed(self) -> Optional[bool]:
         return True   # 腕は無い（腕の条件は満たしているとみなす。Spec-auto.md §7）
 
-    def start_work(self, panel_id: str) -> bool:
+    def start_work(self, panel_id: str, side: str = "front") -> bool:
         return False
 
     def cancel_work(self) -> None:

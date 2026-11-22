@@ -24,8 +24,10 @@ from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 from unique_identifier_msgs.msg import UUID
 
-from fk_auto.fakes import FakeSs
+from fk_auto.fakes import FakeSs, facing_ss_rect
 from fk_auto.ports import SsResult
+
+__all__ = ["FakeSsNode", "facing_ss_rect"]   # 偽の ss を置くときは facing_ss_rect を使う（機体に向いていた辺を基準に返す。WP-AUTO-10）
 from ss_msgs.action import LocatePanels
 from ss_msgs.msg import CleanupDone, LocatorStatus, PanelTop
 

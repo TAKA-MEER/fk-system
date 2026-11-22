@@ -39,8 +39,11 @@ class SsHarness:
 
     def __init__(self, ss_version='3', survey_depth=0.6, recheck_depth=None,
                  recheck_measured=True, reject=False, result_delay_ms=200,
-                 cleanup_delay_ms=200, fake_params=None):
+                 cleanup_delay_ms=200, fake_params=None, panels=None):
         self.errors = []
+        # panels: [(x, y, depth)] の一覧。指定したら survey_depth 等より優先する
+        # （背中合わせの盤（2 m）など複数を置く用。WP-AUTO-10）。
+        self.panels_spec = panels
         self.survey_depth = survey_depth
         self.recheck_depth = recheck_depth
         self.recheck_measured = recheck_measured
@@ -94,6 +97,18 @@ class SsHarness:
     def _respond(self, req):
         m = self.fake.model
         pose = (m.x, m.y, m.yaw)
+        if self.panels_spec is not None:
+            rects = []
+            for (wx, wy, wd) in self.panels_spec:
+                rect = body_rect(wx, wy, math.pi, pose, d=wd)
+                dist = math.hypot(rect.x_m, rect.y_m)
+                rel = (math.atan2(rect.y_m, rect.x_m) - req.azimuth_from_rad) % (2 * math.pi)
+                if dist <= (req.max_distance_m or 5.0) and (
+                        req.azimuth_span_rad >= 2 * math.pi - 1e-6
+                        or rel <= req.azimuth_span_rad):
+                    rects.append(rect)
+            return SsResponse('completed' if rects else 'no_lugs', tuple(rects),
+                              (req.azimuth_from_rad,), (req.azimuth_span_rad,))
         is_recheck = req.azimuth_span_rad < 2 * math.pi - 1e-6
         depth = self.recheck_depth if (is_recheck and self.recheck_depth is not None) \
             else self.survey_depth

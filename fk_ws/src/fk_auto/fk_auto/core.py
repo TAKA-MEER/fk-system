@@ -62,6 +62,11 @@ class Params:
     recheck_span_rad: float = 3.1416
     ss_retry_max: int = 2
     recheck_match_max_m: float = 0.3
+    # 背面側への回り込み（names.md §5。WP-AUTO-10 で足した）
+    arm_reach_m: float = 1.76
+    front_approach_min_m: float = 0.58
+    corner_inset_m: float = 0.10
+    panel_depth_max_m: float = 2.04
 
 
 # ---------------------------------------------------------------------------
@@ -461,6 +466,141 @@ def stand_pose(panel: Panel, stand_distance_min_m: float, stand_margin_m: float)
     return Pose(panel.x + d * math.cos(panel.front_yaw),
                 panel.y + d * math.sin(panel.front_yaw),
                 wrap_angle(panel.front_yaw + math.pi))
+
+
+# ---------------------------------------------------------------------------
+# needs_back・order_back・back_stand_pose・match_back・merge_back（§2.6・§3）
+# ---------------------------------------------------------------------------
+
+def _depth_m(panel: Panel) -> float:
+    """盤の奥行き。中心から正面の辺までは対称なので 2 * front_half_m。"""
+    return 2.0 * panel.front_half_m
+
+
+def needs_back(panel: Panel, arm_reach_m: float, front_approach_min_m: float,
+               corner_inset_m: float) -> bool:
+    """背面側の訪問が要るか。奥行きが測れていないか、奥の隅の狙い（正面の面から
+    depth_m − corner_inset_m）が正面側から届く距離（arm_reach_m − front_approach_min_m）
+    を超えれば真。"""
+    if not panel.depth_measured:
+        return True
+    return (_depth_m(panel) - corner_inset_m) > (arm_reach_m - front_approach_min_m)
+
+
+def back_stand_pose(panel: Panel, panel_depth_max_m: float, stand_distance_min_m: float,
+                    stand_margin_m: float) -> Pose:
+    """背面側の立ち位置。背面の面は正面の辺の中央から内向きに depth_m（測れていなければ
+    panel_depth_max_m）。そこから外（正面の向きと逆）へ stand_distance_min_m +
+    stand_margin_m、向きは盤に向く（正面の向き）。"""
+    depth = _depth_m(panel) if panel.depth_measured else panel_depth_max_m
+    # 中心から背面の面までの距離（正面の向きの符号付き）: 正面の面は +front_half、
+    # 背面の面は +front_half − depth。そこから外へさらに stand 距離だけ進む。
+    offset = panel.front_half_m - depth - (stand_distance_min_m + stand_margin_m)
+    return Pose(panel.x + offset * math.cos(panel.front_yaw),
+                panel.y + offset * math.sin(panel.front_yaw),
+                wrap_angle(panel.front_yaw))
+
+
+def order_back(panels: Sequence[Panel], current_xy: Tuple[float, float],
+               rows: Sequence[Sequence[str]], panel_depth_max_m: float,
+               stand_distance_min_m: float, stand_margin_m: float) -> List[str]:
+    """背面側の待ち → 回る順（§3 order_back）。
+
+    列（rows）ごとにまとめ、立ち位置がいまの位置に最も近い列から。列の中は、
+    いまの位置に近い端から列に沿って順に。列を終えたら、最後の立ち位置から
+    次に近い列へ。rows に入っていない盤は 1 枚だけの列として扱う。
+    """
+    if not panels:
+        return []
+    by_id = {p.panel_id: p for p in panels}
+    groups: List[List[Panel]] = []
+    used = set()
+    for r in rows:
+        members = [by_id[i] for i in r if i in by_id and i not in used]
+        used.update(p.panel_id for p in members)
+        if members:
+            groups.append(members)
+    for p in panels:
+        if p.panel_id not in used:
+            groups.append([p])
+            used.add(p.panel_id)
+    stands = {p.panel_id: back_stand_pose(p, panel_depth_max_m, stand_distance_min_m,
+                                           stand_margin_m) for p in panels}
+
+    def _along(ps: Sequence[Panel]) -> List[Panel]:
+        """列に沿って並べる（幅の向きへの射影が小さい順）。"""
+        fyaw = _circ_mean([p.front_yaw for p in ps])
+        rx, ry = _right_axis(fyaw)
+        return sorted(ps, key=lambda p: p.x * rx + p.y * ry)
+
+    remaining = list(range(len(groups)))
+    cur = current_xy
+    result: List[str] = []
+    while remaining:
+        best_k, best_d = None, None
+        for k in remaining:
+            d = min(math.hypot(stands[p.panel_id].x - cur[0], stands[p.panel_id].y - cur[1])
+                    for p in groups[k])
+            if best_d is None or d < best_d - 1e-12:
+                best_k, best_d = k, d
+        members = _along(groups[best_k])
+        first, last = stands[members[0].panel_id], stands[members[-1].panel_id]
+        if math.hypot(last.x - cur[0], last.y - cur[1]) < math.hypot(first.x - cur[0], first.y - cur[1]):
+            members = list(reversed(members))
+        result.extend(p.panel_id for p in members)
+        cur = (stands[members[-1].panel_id].x, stands[members[-1].panel_id].y)
+        remaining.remove(best_k)
+    return result
+
+
+def match_back(panel: Panel, rects: Sequence[MapRect], recheck_match_max_m: float,
+               panel_depth_max_m: float, row_yaw_tol_rad: float) -> Optional[MapRect]:
+    """背面側で ss が返した矩形（地図の座標）から、その盤とみなすものを選ぶ（§3 match_back）。
+
+    条件: 矩形の向き（奥行きの軸）が盤の正面の向きと row_yaw_tol_rad 以内で平行
+    （向きは問わない）／中心を盤の幅の向きに測ったずれが recheck_match_max_m 以内／
+    中心が正面の面より奥で、正面の面から panel_depth_max_m 以内。満たすもののうち
+    幅の向きのずれが最も小さいもの。無ければ None（top_not_found）。
+    """
+    fx, fy = math.cos(panel.front_yaw), math.sin(panel.front_yaw)
+    rx, ry = _right_axis(panel.front_yaw)
+    best: Optional[MapRect] = None
+    best_lat = None
+    for r in rects:
+        raw = abs(angle_diff(r.yaw_rad, panel.front_yaw)) % math.pi
+        diff = min(raw, math.pi - raw)
+        if diff > row_yaw_tol_rad:
+            continue
+        dx, dy = r.x - panel.x, r.y - panel.y
+        lat = dx * rx + dy * ry
+        if abs(lat) > recheck_match_max_m:
+            continue
+        lon = dx * fx + dy * fy
+        inward = panel.front_half_m - lon   # 中心が正面の面から内側へ入った量
+        if inward < 0.0 or inward > panel_depth_max_m:
+            continue
+        if best_lat is None or abs(lat) < best_lat:
+            best, best_lat = r, abs(lat)
+    return best
+
+
+def merge_back(panel: Panel, rect: MapRect, panel_depth_max_m: float,
+               recheck_match_max_m: float) -> Optional[Panel]:
+    """選んだ矩形で配置図の盤を直す（§3 merge_back）。正面の面は配置図のまま、
+    背面の面は選んだ矩形の機体に向いていた辺。奥行き = 2 つの面の距離、
+    中心 = 2 つの面の中央（幅の向きは配置図のまま）。depth_measured を真にする。
+    奥行きが 0 以下か panel_depth_max_m + recheck_match_max_m を超えるなら None。
+    """
+    fx, fy = math.cos(panel.front_yaw), math.sin(panel.front_yaw)
+    front_coord = panel.front_half_m
+    lon = (rect.x - panel.x) * fx + (rect.y - panel.y) * fy
+    back_coord = lon + (rect.depth_m / 2.0) * math.cos(rect.yaw_rad - panel.front_yaw)
+    depth = front_coord - back_coord
+    if depth <= 0.0 or depth > panel_depth_max_m + recheck_match_max_m:
+        return None
+    mid = (front_coord + back_coord) / 2.0
+    return Panel(panel.panel_id, panel.x + mid * fx, panel.y + mid * fy,
+                 panel.front_yaw, depth / 2.0, panel.front_length_m, True)
 
 
 # ---------------------------------------------------------------------------
