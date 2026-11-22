@@ -51,7 +51,10 @@ services:
       ROBOT_Y: ${ROBOT_Y:?}
       ROBOT_YAW: ${ROBOT_YAW:?}
     volumes:
-      - ${WORLD_SRC:?}: /sim/world.world:ro
+      - type: bind
+        source: ${WORLD_SRC:?}
+        target: /sim/world.world
+        read_only: true
     # GPU は渡さない。privileged もいらない。
 
   sim_hve:
@@ -67,8 +70,20 @@ services:
       POSE_SOURCE: gazebo
       ROBOT_ENTITY: th_robot
     volumes:
-      - ${FK_REPO:?}:/work:ro
-      - ${HVE_REPO:?}:/hve:ro
-      - ${SS_REPO:?}:/ss:ro
-      - ${SCENE_DIR_SRC:?}:/sim/scene:ro
+      - type: bind
+        source: ${FK_REPO:?}
+        target: /work
+        read_only: true
+      - type: bind
+        source: ${HVE_REPO:?}
+        target: /hve
+        read_only: true
+      - type: bind
+        source: ${SS_REPO:?}
+        target: /ss
+        read_only: true
+      - type: bind
+        source: ${SCENE_DIR_SRC:?}
+        target: /sim/scene
+        read_only: true
     command: [bash, /work/fk_ws/sim/hve_up.sh]
