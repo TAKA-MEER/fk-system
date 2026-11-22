@@ -54,7 +54,7 @@ def set_robot_pose(container, x, y, yaw, name="th_robot"):
     qx, qy, qz, qw = _yaw_to_quaternion(yaw)
     request = (
         "{state: {name: '%s', pose: {position: {x: %.6f, y: %.6f, z: 0.0}, "
-        "orientation: {x: %.6f, y: %.6f, z: %.6f, w: %.6f}}}, reference_frame: 'world'}"
+        "orientation: {x: %.6f, y: %.6f, z: %.6f, w: %.6f}}}"
         % (name, x, y, qx, qy, qz, qw)
     )
     inner = (
