@@ -53,9 +53,9 @@ def set_robot_pose(container, x, y, yaw, name="th_robot"):
     """Gazebo の `/set_entity_state` で機体を置き直す（`gazebo_ros_state`）。"""
     qx, qy, qz, qw = _yaw_to_quaternion(yaw)
     request = (
-        "{name: '%s', state: {name: '%s', pose: {position: {x: %.6f, y: %.6f, z: 0.0}, "
-        "orientation: {x: %.6f, y: %.6f, z: %.6f, w: %.6f}}, reference_frame: 'world'}}"
-        % (name, name, x, y, qx, qy, qz, qw)
+        "{state: {name: '%s', pose: {position: {x: %.6f, y: %.6f, z: 0.0}, "
+        "orientation: {x: %.6f, y: %.6f, z: %.6f, w: %.6f}}, reference_frame: 'world'}"
+        % (name, x, y, qx, qy, qz, qw)
     )
     inner = (
         "source /opt/ros/humble/setup.bash && source /root/th_ws/install/setup.bash && "
