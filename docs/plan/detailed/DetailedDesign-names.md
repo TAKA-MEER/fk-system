@@ -60,7 +60,7 @@
 | `SS_INTERFACE_VERSION` | 取り込んだ ss の型の版（`"3"`）。`/ss/locate/status` の版と比べる。`fk_ws/ss_ref` を進めるときに一緒に見直す |
 | `FakeSsNode` | ノード `fake_ss` のクラス（`fk_sim.fake_ss`。ss の口を ROS 2 で真似る。振る舞いは `fk_auto.fakes.FakeSs`） |
 | `RosThPort` | th の口の ROS 2 の実装（`fk_auto.auto_runner` に置く。rclpy を使うので `ports.py` に置かない。2026-11-11） |
-| `to_map`・`front_edge`・`is_confident`・`group_rows`・`order_panels`・`stand_pose`・`stand_blocked`・`needs_regoal`・`ss_result_valid`・`can_run`・`classify_skip`・`classify_halt`・`gate`・`drive_watch` | 純関数（[-auto.md](DetailedDesign-auto.md) §3・§4） |
+| `to_map`・`front_edge`・`is_confident`・`group_rows`・`order_panels`・`stand_pose`・`stand_blocked`・`ss_result_valid`・`can_run`・`classify_skip`・`classify_halt`・`gate`・`drive_watch` | 純関数（[-auto.md](DetailedDesign-auto.md) §3・§4） |
 | `CMD_LIFT_LOWER`（`"lift.lower"`）・`CMD_SS_REQUEST`（`"ss.request"`） | `gate` に渡す「昇降機を下げる」「ss への依頼」（`fk_auto.core` の定数。外へは出さない。2026-11-11 WP-AUTO-02） |
 | `TH_INTERFACE_VERSION` | 取り込んだ th の型の版（`"1"`。th [DetailedDesign-measure.md](../../../../th-system/docs/plan/detailed/DetailedDesign-measure.md) §1.2）。生存確認に載せ、`/measure/status` の版と比べる。**`fk_ws/th_ref`（§7）を進めるときに一緒に見直す**（2026-11-11） |
 
@@ -114,7 +114,7 @@ th 側の名前（`/measure/*`・`/map`・`/ui/active_screen`・`/safety/estop_u
 | 種類 | 名前 |
 | --- | --- |
 | 段（`phase`） | `IDLE` / `PREPARE` / `SURVEY` / `SELECT` / `LOWER` / `GOAL` / `RECHECK` / `AT_PANEL` / `FINISH` / `PAUSED` / `REENTRY` / `HALTED` |
-| 飛ばす理由（`PanelResult.reason`） | `no_path`（経路の再計算をしても解けない）/ `stand_blocked`（正面側の床が塞がっていて立てない）/ `stand_mismatch`（認識し直した立ち位置が許容差を超える）/ `top_not_found`（天面が見つからない）/ `arm_space_blocked`（腕が振れる範囲が左右とも塞がっている。測定機構の口が返す）/ `no_mechanism`（測定機構が付いていない）/ `ss_failed`（ss の結果が時間内に来ない・使える結果が得られない）/ `camera_too_low`（ss が撮る高さまでカメラを上げられない。天井が近い・上端）/ `ceiling_unknown`（ss が天井までの距離が分からず上がれない。2026-11-16。ss の版 2 で `camera_too_low` から分かれた） |
+| 飛ばす理由（`PanelResult.reason`） | `no_path`（経路の再計算をしても解けない）/ `stand_blocked`（正面側の床が塞がっていて立てない）/ ~~`stand_mismatch`~~（2026-11-23 WP-AUTO-08 で外した）/ `top_not_found`（天面が見つからない）/ `arm_space_blocked`（腕が振れる範囲が左右とも塞がっている。測定機構の口が返す）/ `no_mechanism`（測定機構が付いていない）/ `ss_failed`（ss の結果が時間内に来ない・使える結果が得られない）/ `camera_too_low`（ss が撮る高さまでカメラを上げられない。天井が近い・上端）/ `ceiling_unknown`（ss が天井までの距離が分からず上がれない。2026-11-16。ss の版 2 で `camera_too_low` から分かれた） |
 | 関門と見張りの理由（`AutoState.gate_reason`。`AutoCommand` の `reject_reason` にも使う） | §4.2 の `lift_not_bottom`・`arm_not_stowed`・`ss_busy`・`state_unreadable`（th の様子・昇降機の高さ・腕の状態・ss の状態のどれかが読めない）・`reentry_required`・`version_mismatch` に加えて、**2026-11-11 に足した**: `th_not_waiting`（ss への依頼で th が `WAIT` でない）/ `arm_link_lost`（測定機構があるのに腕の制御器と通信できない。止める理由と同じキー）/ `not_listed`（関門の表に無い指示。[-auto.md](DetailedDesign-auto.md) §4.1）/ `lift_drift`（走っている間に昇降機が下端から `lift_drift_stop_mm` 以上離れた。見張り §4.2）/ **2026-11-16 に足した**: `camera_pose_unknown`（盤前の認識し直しで ss が「カメラの向きが分からない」を返して一時停止している。ss の理由と同じキー。[-auto.md](DetailedDesign-auto.md) §2.4） |
 | 止める理由（`halt_reason`） | `arm_stuck`（腕が出たまま動けない）/ `lift_not_lowered`（昇降機を下げられない）/ `state_unreadable`（昇降機の高さか腕の状態が読めない）/ `ss_cleanup_timeout`（ss の後片付けの完了が来ない）/ `ss_link_lost`（ss と通信できない）/ `arm_link_lost`（腕が出ている間に腕の制御器と通信できない） |
 
@@ -146,9 +146,6 @@ th 側の名前（`/measure/*`・`/map`・`/ui/active_screen`・`/safety/estop_u
 | `front_approach_min_m` | m | 0.58 | 先方（[Spec-auto.md](../spec/Spec-auto.md) §1。前後の並進で寄れる盤面から機体の中心までの距離。th の障害物の停止。実機では未確認）。`needs_back`。2026-11-23 |
 | `corner_inset_m` | m | 0.10 | 先方（[Spec.md](../spec/Spec.md) §1.3。四隅は天面の隅から内側 100 mm を狙う）。`needs_back`。2026-11-23 |
 | `panel_depth_max_m` | m | 2.04 | 先方（[Spec-auto.md](../spec/Spec-auto.md) §3。背中合わせの盤の奥行きは 1400〜2040 mm になりうる）。奥行きが分からない盤の背面側の立ち位置・`match_back`・`merge_back`。2026-11-23 |
-| `arrive_tol_m` | m | 0.12 | 先方（th の到着の許容差） |
-| `arrive_tol_rad` | rad | 0.12 | 先方（同上） |
-| `regoal_max` | 回 | 1 | 仕様（[Spec-auto.md](../spec/Spec-auto.md) §6「目的地を 1 回出し直してもまだ超える」） |
 | `reroute_max` | 回 | 3 | 暫定（仕様は「何回か」） |
 | `blocked_wait_s` | s | 5 | 暫定（`BLOCKED` がこれだけ続いたら経路の再計算を出す） |
 | `ss_result_timeout_s` | s | 300 | 暫定（ss へ制限時間として渡す。ss は過ぎたら「時間切れ」で後片付けして返す） |
