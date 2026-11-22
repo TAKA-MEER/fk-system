@@ -163,6 +163,9 @@ def main(argv=None):
     ss_repo = os.environ.get("SS_REPO") or os.path.join(
         os.path.dirname(_HERE), "..", "..", "ss-system")
     ss_repo = os.path.abspath(ss_repo).replace("\\", "/")
+    # git bash は /c/... 形式で読む（C:/ では読めない）
+    if ss_repo[1:2] == ":" and ss_repo[0].isalpha():
+        ss_repo = "/" + ss_repo[0].lower() + ss_repo[2:]
     # Windows の Python は C:\ 形式を返す。bash は C:/ 形式で読める。
 
     robot_pose = (args.x, args.y, args.yaw)
