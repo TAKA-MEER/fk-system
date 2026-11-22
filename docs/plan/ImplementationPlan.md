@@ -251,7 +251,7 @@ th-system では 14 回マージしたのに計画書に反映されたのは 1 
 | `WP-AUTO-09` | **ss の口の版 2 の扱いを状態機械と偽の ss に入れる**（2026-11-16 ユーザー決定。[Spec-auto.md](spec/Spec-auto.md) §3。[DetailedDesign-auto.md](detailed/DetailedDesign-auto.md) §2.4: 後片付けは `cleanup_limit_s` ＋余裕で待つ・`ceiling_unknown` は飛ばす・`camera_pose_unknown` は一時停止） | 03 | **配線済み（偽の ss 相手）**（2026-11-16 マージ `efc14f8`。Sonnet・差し戻し無し。ホストの試験 354 件・コンテナの結合試験 14 件・変異 4 件（上限を見ない・完了が来なくても止めない・`ceiling_unknown` の分岐・完了の前に一時停止）を実装管理担当が再実行。人の「中止」のあとの後片付けの待ちは固定の 210 s のまま。本物の ss とは `WP-AUTO-06` で） |
 | `WP-AUTO-07` | **測定機構なしの道を、本システムの設定のバイパス（既定でバイパス）で入る形に替える**（2026-11-14 ユーザー決定。[Spec-auto.md](spec/Spec-auto.md) §7: アームの制御器と通信できないときは何も動かさない。ただし搭載までは移動を確かめるためバイパスを既定にする。デモ特例 [EXCEPTION-LEDGER.md](EXCEPTION-LEDGER.md) `W-1`。昇降部は「付いていない」を出さなくなった）。詳細設計（[DetailedDesign-auto.md](detailed/DetailedDesign-auto.md) §2.3 ほか・画面の案）とコード・試験を直し、`WAIVER(demo): W-1` のタグを置く | 03 | 未着手（詳細設計の直しから） |
 | `WP-AUTO-08` | **着いたあとの目的地の出し直しを外す**（2026-11-15 ユーザー決定。[Spec-auto.md](spec/Spec-auto.md) §1・§6: 盤への移動は精度が出ないものとし、着いたあとは盤前の作業の側が直接制御の動きで合わせる）。詳細設計（`needs_regoal`・`stand_mismatch`）とコード・試験を直す | 03 | 未着手（詳細設計の直しから） |
-| `WP-AUTO-10` | **背面側への回り込み**（2026-11-23 ユーザー決定。[Spec-auto.md](spec/Spec-auto.md) §1〜§3: 奥の点が正面側から届かない盤・奥行きが測れていない盤は、正面側をすべて回ったあと背面側へ回り込む。たどり着けなければ奥の 2 隅は「届かず」）。設計は [DetailedDesign-auto.md](detailed/DetailedDesign-auto.md) §2.6（案） | 03・06・08 | 未着手（**設計は案。ユーザーの確認待ち**） |
+| `WP-AUTO-10` | **背面側への回り込み**（2026-11-23 ユーザー決定。[Spec-auto.md](spec/Spec-auto.md) §1〜§3: 奥の点が正面側から届かない盤・奥行きが測れていない盤は、正面側をすべて回ったあと背面側へ回り込む。たどり着けなければ奥の 2 隅は「届かず」）。設計は [DetailedDesign-auto.md](detailed/DetailedDesign-auto.md) §2.6 | 03・06・08 | 未着手（設計は 2026-11-23 ユーザー確定。08 のあと） |
 
 ## 5. 各段階の確認方法
 
