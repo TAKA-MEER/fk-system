@@ -245,4 +245,6 @@ th 側の名前（`/measure/*`・`/map`・`/ui/active_screen`・`/safety/estop_u
 | `scene` | 起動の引数 | 記述のパス |
 | `fk_ws/src/fk_sim/test_scene/` | ディレクトリ | 生成器の試験（ROS 2 なし。`fk_sim/test/conftest.py` が rclpy を読むので分ける）。`test.sh` も回す |
 | `public_room` | 記述の名前 | 最初の広報版の記述（架空の部屋） |
+| `fk_sim.render` | Python のモジュール | 描画の芯（機体の位置・昇降機の高さ・カメラの向き → 1280×720 の JPEG）。ROS 2 と hve の口を読まない（`WP-SIM-02`）。つなぐ部分（hve の観察・天井の差し込み・絵の URL・Gazebo の位置）は `sim_render` ノード（`WP-SIM-03`） |
+| `SS_REPO` | 環境変数（既存） | 描画が ss の `geometry.camera_T`・`project` と `locator.yaml` を読む先（既定 `../ss-system`。写さない） |
 | `BLENDER` | 環境変数 | 生成器が使う Blender の実行ファイル（無ければ `.glb` を作らず止まる） |
