@@ -23,6 +23,7 @@ setup(
             'fake_th = fk_sim.fake_th:main',
             'fake_ss = fk_sim.fake_ss:main',
             'fk_sim_render = fk_sim.render.__main__:main',
+            'sim_render = fk_sim.sim_render:main',
         ],
     },
 )
