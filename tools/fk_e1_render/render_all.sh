@@ -20,7 +20,7 @@ for d in "$ROOT"/export/*/*; do
   if [ "$MODE" = "py" ]; then
     PYOPENGL_PLATFORM=osmesa python3 "$TOOLS/render_py.py" --export-dir "$d" --out "$out" 2>&1 | tee -a "$LOG"
   else
-    xvfb-run -a -s "-screen 0 1280x720x24" python3 "$TOOLS/render_gz.py" --export-dir "$d" --out "$out" 2>&1 | tee -a "$LOG"
+    xvfb-run -a -s "-screen 0 1280x720x24" python3 "$TOOLS/render_gz.py" --export-dir "$d" --out "$out" --frames 10 2>&1 | tee -a "$LOG"
   fi
   if [ "${PIPESTATUS[0]}" -ne 0 ]; then
     echo "FAIL $MODE $combo/$stem" | tee -a "$LOG"
