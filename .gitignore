@@ -48,3 +48,6 @@ fk_ws/src/th_system_msgs/
 fk_ws/th_import/
 fk_ws/src/ss_msgs/
 fk_ws/ss_import/
+
+# シミュレーションで動かす th の取り出し先（fk_ws/sim/import_th_sim.sh が作る）
+fk_ws/sim/th_src/

@@ -249,6 +249,10 @@ th 側の名前（`/measure/*`・`/map`・`/ui/active_screen`・`/safety/estop_u
 | `sim_render` のパラメータ（`WP-SIM-03`。2026-11-22） | ROS 2 のパラメータ | `scene_dir`（生成器の出力）・`frame_port`（絵を渡す HTTP。18100）・`camera_host`（hve のカメラの偽物。`127.0.0.1:18000`）・`lift_host`（hve の昇降部の偽物。`127.0.0.1:18080`）・`pose_source`（`gazebo` ／ `fixed`）・`robot_entity`（Gazebo の機体の名前。`th_robot`＝th の `gazebo.launch.py` の `-entity`）・`fixed_x`・`fixed_y`・`fixed_yaw`（`fixed` のとき）・`ceiling_period_ms`（150。hve の求めは 200 以下）・`ceiling_sensor_offset_m`（天井の距離計の、カメラの高さからの差。0） |
 | `/frame` | HTTP のパス | `sim_render` が絵を返す口（hve の `--frame-url` に渡す。`http://127.0.0.1:18100/frame`） |
 | ポート（シミュレーション） | — | 昇降部の偽物 18080（hve `fake_lift_server.py` の既定）・カメラの偽物 18000（hve `使い方.md` §5.1）・映像 8080（hve の `params.toml` の `video_port`。カメラのソフトが取りに行く先で固定）・`frame_port` 18100 |
+| `fk_ws/sim/th_sim_ref` | ファイル（`WP-SIM-04`） | シミュレーションで動かす th のコミット（全桁 1 行。いまは th `feat/era3-measure` の `fc4e2876`＝`gui` 引数が入ったもの）。型の取り込み `fk_ws/th_ref` とは別 |
+| `fk_ws/sim/import_th_sim.sh` | ファイル | ホストで回す。`th_sim_ref` のコミットから th の `th_ws` を `git archive` で `fk_ws/sim/th_src/`（git に入れない）へ取り出す（th の作業ツリーに触れない） |
+| `fk_ws/sim/sim_up.sh`・`sim_down.sh` | ファイル | 一式を起こす・止める（compose の `sim_th`・`sim_hve` と、ss の `scripts/ss.sh start`）。止めるのは自分が起こしたものだけ |
+| `tools/sim_locate_check/` | ディレクトリ | 機体を置き直して ss に依頼し、結果を `scene.json` の正解と比べる道具 |
 | `fk_ws/sim/hve_up.sh` | ファイル | `sim_hve` の中で hve の偽物 3 つ（昇降部・カメラ・映像）と `sim_render` を起こす（LF・BOM なし） |
 | `SS_REPO` | 環境変数（既存） | 描画が ss の `geometry.camera_T`・`project` と `locator.yaml` を読む先（既定 `../ss-system`。写さない） |
 | `BLENDER` | 環境変数 | 生成器が使う Blender の実行ファイル（無ければ `.glb` を作らず止まる） |
