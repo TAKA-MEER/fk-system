@@ -66,6 +66,7 @@ print("robot pose (scene.json):", pose)
 PY
 # shellcheck disable=SC1091
 . "$FK_REPO/.briefs/tmp/robot_pose.env"
+export ROBOT_X ROBOT_Y ROBOT_YAW
 
 # --- 2. th の取り出し（th_repo のコミットから。静的ファイル） --------------------
 echo "== th の取り出し（$TH_REPO）=="
