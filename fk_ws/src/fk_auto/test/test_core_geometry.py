@@ -1,7 +1,7 @@
-"""§3 の表: stand_blocked・needs_regoal・ss_result_valid の試験。"""
+"""§3 の表: stand_blocked・ss_result_valid の試験。"""
 import math
 
-from fk_auto.core import Grid, Pose, ThStatus, needs_regoal, ss_result_valid, stand_blocked
+from fk_auto.core import Grid, Pose, ThStatus, ss_result_valid, stand_blocked
 
 PI = math.pi
 
@@ -90,24 +90,6 @@ def test_stand_blocked_origin_offset():
     g = grid_with({(0, 0): 100}, ox=-5.0, oy=-5.0)  # 中心 (-4.975,-4.975)
     assert stand_blocked(g, Pose(-5.0, -5.0, 0.0), 0.275, 1)
     assert not stand_blocked(g, Pose(0.0, 0.0, 0.0), 0.275, 1)
-
-
-# --- needs_regoal -----------------------------------------------------------
-
-def test_needs_regoal_within_tolerance():
-    assert not needs_regoal(Pose(1.0, 1.0, 0.0), Pose(1.1, 1.0, 0.1), 0.12, 0.12)
-
-
-def test_needs_regoal_distance_exceeds():
-    assert needs_regoal(Pose(1.0, 1.0, 0.0), Pose(1.13, 1.0, 0.0), 0.12, 0.12)
-    assert needs_regoal(Pose(1.0, 1.0, 0.0), Pose(1.09, 1.09, 0.0), 0.12, 0.12)
-
-
-def test_needs_regoal_yaw_exceeds_and_wraps():
-    assert needs_regoal(Pose(0, 0, 0.0), Pose(0, 0, 0.13), 0.12, 0.12)
-    # +π と −π をまたぐ: 差は 0.1 しかない
-    assert not needs_regoal(Pose(0, 0, PI - 0.05), Pose(0, 0, -PI + 0.05), 0.12, 0.12)
-    assert needs_regoal(Pose(0, 0, PI - 0.1), Pose(0, 0, -PI + 0.1), 0.12, 0.12)
 
 
 # --- ss_result_valid --------------------------------------------------------

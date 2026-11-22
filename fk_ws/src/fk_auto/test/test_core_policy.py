@@ -82,7 +82,6 @@ def test_can_run_arm_out_beats_lower_first():
 def test_classify_skip_all_events():
     assert classify_skip(SkipEvent.PATH_NOT_FOUND) == "no_path"
     assert classify_skip(SkipEvent.STAND_AREA_OCCUPIED) == "stand_blocked"
-    assert classify_skip(SkipEvent.STAND_MISMATCH_TWICE) == "stand_mismatch"
     assert classify_skip(SkipEvent.TOP_NOT_FOUND) == "top_not_found"
     assert classify_skip(SkipEvent.ARM_SPACE_BLOCKED) == "arm_space_blocked"
     assert classify_skip(SkipEvent.MECHANISM_ABSENT) == "no_mechanism"
@@ -91,7 +90,7 @@ def test_classify_skip_all_events():
     assert classify_skip(SkipEvent.CAMERA_TOO_LOW) == "camera_too_low"
     assert classify_skip(SkipEvent.CEILING_UNKNOWN) == "ceiling_unknown"
     assert {classify_skip(e) for e in SkipEvent} <= {
-        "no_path", "stand_blocked", "stand_mismatch", "top_not_found", "arm_space_blocked",
+        "no_path", "stand_blocked", "top_not_found", "arm_space_blocked",
         "no_mechanism", "ss_failed", "camera_too_low", "ceiling_unknown"}
 
 
