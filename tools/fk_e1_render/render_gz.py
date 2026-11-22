@@ -28,8 +28,12 @@ def main():
     ap.add_argument("--frames", type=int, default=3)
     ap.add_argument("--timeout", type=float, default=120.0)
     ap.add_argument("--update-rate", type=float, default=30.0)
-    ap.add_argument("--ambient", type=float, default=0.55)
-    ap.add_argument("--bg", type=float, default=0.8)
+    ap.add_argument("--ambient", type=float, default=0.12)
+    ap.add_argument("--bg", type=float, default=0.45)
+    ap.add_argument("--scene-roll", type=float, default=0.0)
+    ap.add_argument("--mesh", default="scene.dae")
+    ap.add_argument("--sun", type=float, default=0.18)
+    ap.add_argument("--point-scale", type=float, default=0.22)
     args = ap.parse_args()
 
     out = os.path.abspath(args.out)
@@ -42,8 +46,8 @@ def main():
     jpath = os.path.join(args.export_dir, "camera_lights.json")
     with open(jpath, encoding="utf-8") as f:
         info = json.load(f)
-    mesh_uri = "file://" + os.path.abspath(os.path.join(args.export_dir, "scene.dae")).replace("\\", "/")
-    world = build_world(info, mesh_uri, save_dir, args.update_rate, args.ambient, args.bg)
+    mesh_uri = "file://" + os.path.abspath(os.path.join(args.export_dir, args.mesh)).replace("\\", "/")
+    world = build_world(info, mesh_uri, save_dir, args.update_rate, args.ambient, args.bg, args.scene_roll, args.sun, args.point_scale)
     world_path = os.path.join(out, "scene.world")
     with open(world_path, "w", encoding="utf-8") as f:
         f.write(world)

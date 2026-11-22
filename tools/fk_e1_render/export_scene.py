@@ -158,6 +158,7 @@ def main():
     n_sel = select_for_export()
 
     dae = os.path.join(out, "scene.dae")
+    obj = os.path.join(out, "scene.obj")
     glb = os.path.join(out, "scene.glb")
     bpy.ops.wm.collada_export(
         filepath=dae,
@@ -170,6 +171,17 @@ def main():
         use_texture_copies=False,
         triangulate=True,
         use_object_instantiation=False,
+    )
+    # .dae は Gazebo/OGRE の読み込みが軸を変換してしまうため、.obj も出す（試行用）
+    bpy.ops.wm.obj_export(
+        filepath=obj,
+        export_selected_objects=True,
+        export_materials=True,
+        export_uv=True,
+        forward_axis="NEGATIVE_Z",
+        up_axis="Z",
+        apply_modifiers=True,
+        export_triangulated_mesh=True,
     )
     bpy.ops.export_scene.gltf(
         filepath=glb,

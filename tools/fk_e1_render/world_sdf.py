@@ -47,7 +47,9 @@ def fmt(v):
     return " ".join(f"{x:.6f}" for x in v)
 
 
-def build_world(info, mesh_uri, save_path, update_rate, ambient, bg):
+def build_world(info, mesh_uri, save_path, update_rate, ambient, bg, scene_roll=0.0, sun=0.35, point_scale=0.4):
+    # scene_roll: .dae の読み込み側が Z-up を変換してしまった場合に、モデルを回して戻すための診断用オプション
+    scene_pose_xml = f"      <pose>0 0 0 {scene_roll:.6f} 0 0</pose>\n" if scene_roll else ""
     cam = info["camera"]
     W, H = cam["resolution"]
     pose = camera_pose(cam)
@@ -57,7 +59,7 @@ def build_world(info, mesh_uri, save_path, update_rate, ambient, bg):
     for i, q in enumerate(point_lights):
         c = q["color"]
         # 面積光源の energy は Gazebo の点光源に直接対応しないので、色だけ使い明るさは固定にする
-        diff = " ".join(f"{min(1.0, 0.5 + 0.5 * x):.3f}" for x in c)
+        diff = " ".join(f"{min(1.0, point_scale * x):.3f}" for x in c)
         loc = q["location"]
         light_xml.append(
             f"""    <light name="fk_light_{i}" type="point">
@@ -84,13 +86,14 @@ def build_world(info, mesh_uri, save_path, update_rate, ambient, bg):
     <light name="fk_sun" type="directional">
       <cast_shadows>true</cast_shadows>
       <pose>0 0 10 0 0.6 0.4</pose>
-      <diffuse>0.9 0.9 0.9 1</diffuse>
+      <diffuse>{sun} {sun} {sun} 1</diffuse>
       <specular>0.1 0.1 0.1 1</specular>
       <direction>0.3 0.3 -1</direction>
     </light>
 {os.linesep.join(light_xml)}
     <model name="fk_scene">
       <static>true</static>
+{scene_pose_xml}
       <link name="link">
         <visual name="visual">
           <geometry>

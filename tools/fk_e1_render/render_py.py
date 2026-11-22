@@ -24,7 +24,7 @@ import trimesh
 from PIL import Image
 
 
-def build_scene(info):
+def build_scene(info, dir_intensity=1.0, ambient=0.30, point_intensity=8.0):
     glb = os.path.join(os.path.dirname(info["_json"]), "scene.glb")
     tm = trimesh.load(glb, force="scene")
     scene = pyrender.Scene.from_trimesh_scene(tm, bg_color=(0.8, 0.85, 0.9))
@@ -43,15 +43,15 @@ def build_scene(info):
         [-0.5, -0.433, 0.75, 0.0],
         [0.0, 0.0, 0.0, 1.0],
     ])
-    scene.add(pyrender.DirectionalLight(color=np.ones(3), intensity=3.0), pose=R)
-    scene.ambient_light = np.array([0.35, 0.35, 0.35])
+    scene.add(pyrender.DirectionalLight(color=np.ones(3), intensity=dir_intensity), pose=R)
+    scene.ambient_light = np.array([ambient, ambient, ambient])
 
     lights = sorted(info.get("lights", []), key=lambda q: q.get("energy", 0.0), reverse=True)
     for i, q in enumerate([x for x in lights if x["type"] in {"POINT", "SPOT", "AREA"}][:4]):
         loc = np.array(q["location"], float)
         pose = np.eye(4)
         pose[:3, 3] = loc
-        scene.add(pyrender.PointLight(color=np.array(q["color"], float), intensity=20.0), pose=pose)
+        scene.add(pyrender.PointLight(color=np.array(q["color"], float), intensity=point_intensity), pose=pose)
     return scene
 
 
@@ -61,6 +61,9 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--warmup", type=int, default=1)
     ap.add_argument("--repeat", type=int, default=3)
+    ap.add_argument("--dir-intensity", type=float, default=0.6)
+    ap.add_argument("--ambient", type=float, default=0.25)
+    ap.add_argument("--point-intensity", type=float, default=6.0)
     args = ap.parse_args()
     os.makedirs(args.out, exist_ok=True)
 
@@ -69,7 +72,7 @@ def main():
     with open(jpath, encoding="utf-8") as f:
         info = json.load(f)
     info["_json"] = jpath
-    scene = build_scene(info)
+    scene = build_scene(info, args.dir_intensity, args.ambient, args.point_intensity)
     cam = info["camera"]
     W, H = cam["resolution"]
     fx, fy = cam["K"][0][0], cam["K"][1][1]
