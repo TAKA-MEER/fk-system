@@ -71,7 +71,7 @@ def set_robot_pose(container, x, y, yaw, name="th_robot"):
 
 def request_locate(ss_repo, ss_args, out_json):
     """ss の `scripts/ss.sh locate` で依頼し、結果の JSON を読む。"""
-    script = os.path.join(ss_repo, "scripts", "ss.sh")
+    script = ss_repo + "/scripts/ss.sh"
     cmd = ["bash", script, "locate", "--yes", "--json", out_json] + list(ss_args)
     result = _run(cmd, env={"ROS_DOMAIN_ID": "78"})
     if result.returncode != 0:
