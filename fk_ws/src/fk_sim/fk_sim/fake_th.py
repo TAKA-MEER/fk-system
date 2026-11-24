@@ -158,7 +158,8 @@ class FakeThNode(Node):
             response.accepted = bool(r and r.accepted)
             response.reject_reason = r.reject_reason if r else 'bad_argument'
             response.mode, response.state = self.model.mode, self.model.state
-            self._publish_status()
+            # 状態の配信はタイマ（10 Hz）の周期だけ。応答の中ですぐ配信しない
+            # （応答と状態の届く順に頼る試験を作らない。DetailedDesign-auto.md §2.7）
             return response
 
 

@@ -198,6 +198,60 @@ def test_reentry_on_status_flag_alone_even_if_result_was_missed():
     w.until_phase("REENTRY")
 
 
+def test_estop_pauses_not_idle_and_run_continues_goal_after_release():
+    w = World([WPanel(3.0, 0.0)])
+    to_nav(w)
+    w.th.model.human_estop()
+    w.until_phase("PAUSED")
+    assert w.phase != "IDLE" and w.runner.get_state().th_mode == "ESTOP"
+    assert w.cmd("auto.run").reject_reason == "phase_not_accepting"   # 解けるまで受けない
+    w.tick(50)
+    assert w.phase == "PAUSED" and "meas.start" not in w.th_cmds()
+    w.th.model.human_estop_release()
+    w.tick(3)
+    assert w.phase == "PAUSED"                   # 解除しただけでは走らない
+    assert w.cmd("auto.run").accepted
+    w.until_phase("GOAL")
+    assert w.th_cmds().count("meas.goal") == 1 and w.th_cmds().count("meas.start") == 1
+    w.until_phase("FINISH")
+    assert w.results() == [("P001", "SKIPPED", "no_mechanism")]
+
+
+def test_carry_pauses_not_idle_and_run_continues_after_release():
+    w = World([WPanel(3.0, 0.0)])
+    to_nav(w)
+    w.th.model.human_carry()
+    w.until_phase("PAUSED")
+    assert w.runner.get_state().th_mode == "CARRY"
+    w.th.model.human_carry_release()
+    w.tick(3)
+    assert w.cmd("auto.run").accepted
+    w.until_phase("FINISH")
+    assert w.th_cmds().count("meas.goal") == 1 and w.th_cmds().count("meas.start") == 1
+
+
+def test_estop_with_localization_lost_goes_to_reentry_not_paused():
+    w = World([WPanel(3.0, 0.0)])
+    to_nav(w)
+    w.th.model.lose_localization()          # ESTOP を経て見失う
+    w.th.model.drain_results()              # 取り消しの結果を取りこぼした想定（状態の旗だけ）
+    w.runner._reentry_seen = False
+    w.until_phase("REENTRY")
+    assert w.runner.get_state().th_mode == "ESTOP"
+    assert w.cmd("auto.run").reject_reason == "phase_not_accepting"
+    w.tick(10)
+    assert w.phase == "REENTRY"
+
+
+def test_command_id_prefix_is_passed_in_and_default_changes_per_runner():
+    w = World([WPanel(3.0, 0.0)], command_id_prefix="fixed")
+    to_nav(w)
+    assert w.th.sent[0].command_id == "fixed-c1"
+    w2 = World([WPanel(3.0, 0.0)])
+    w3 = World([WPanel(3.0, 0.0)])
+    assert w2.runner._cmd_prefix and w2.runner._cmd_prefix != w3.runner._cmd_prefix
+
+
 def test_th_leaving_auto_mode_returns_to_idle():
     w = World([WPanel(3.0, 0.0)])
     w.to_select()

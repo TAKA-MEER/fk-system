@@ -21,16 +21,18 @@ from fk_auto.ports import (ArmPort, ArmResult, LiftPort, SsCleanup, SsPort, SsRe
 # 正: th Spec-modes.md SM-3.1.2-120〜-142・th DetailedDesign-measure.md §3.1〜§3.3。
 #
 # 簡略化（段階 A。モデルが持たないもの）:
-# - 状態は WAIT・NAV・ALIGN・BLOCKED・PAUSE だけ。ADJUST（旋回・並進）・AT_PANEL・ESTOP・CARRY は無い。
+# - 状態は WAIT・NAV・ALIGN・BLOCKED・PAUSE だけ。ADJUST（旋回・並進）・AT_PANEL は無い。
 #   meas.turn・translate・set_limits・done は state_not_accepting で拒否する。
-# - 自己位置を見失ったとき（-142）は ESTOP ではなく PAUSE に落とし、reentry_required を立てる
-#   （目的地は CANCELLED + localization_lost で取り消す。解除して戻る先が PAUSE という点だけ合わせた）。
+# - 非常停止・手押し（th §6・Spec-modes §6）は、モードごと ESTOP・CARRY（状態 NONE）で表す。
+#   目的地は持ったまま結果を出さず、解除すると AUTO_MEASURE/PAUSE に戻る。
+# - 自己位置を見失ったとき（-142）は ESTOP に落とし、目的地を CANCELLED + localization_lost
+#   で取り消して reentry_required を立てる。
 # - 手前の経路の確かめ・角の円の障害物は、試験用の旗（blocked・corner_obstacle）で作る。
 #
-# 指示の拒否の順は WP-AUTO-01 の fake_th.py と同じ（th §3.1 は順を決めていない）:
-#   1. command_id が空 -> bad_argument
-#   2. 最後に受けた生存確認の版が違う（受けたことがあるときだけ）-> version_mismatch
-#   3. 生存確認が途絶えている（まだ 1 つも受けていないのを含む）-> link_lost
+# 指示の拒否の順（th §3.4 の /measure/command の判定の順）:
+#   1. meas. 以外・command_id が空・未知の meas.* -> bad_argument（重複の id もここ）
+#   2. 版の合う生存確認が一度も無い（かつ版違いの受信がある）-> version_mismatch
+#   3. 生存確認が途絶えている -> link_lost
 #   4. 状態に応じた拒否（このファイルの _reject_by_state）
 
 KNOWN_UNSUPPORTED = ("meas.turn", "meas.translate", "meas.set_limits", "meas.done")
@@ -58,6 +60,10 @@ class ThModel:
         self.corner_obstacle = False     # 試験用: 角の円の中に障害物がある（goal・start を拒否）
         self.pending: Optional[Tuple[str, str]] = None   # (command_id, command) 目的地を持っている間
         self.pending_command_id = ""
+        self._seen_ids: set = set()        # 受理した command_id（th が動いている間は覚える）
+        self._prev_mode = ""               # ESTOP・CARRY に入る前のモード
+        self._prev_mode_state = ""         # ESTOP・CARRY に入る前の状態（AUTO_MEASURE 以外のときの戻り先）
+        self._ever_valid_hb = False        # 版の合う生存確認を一度でも受けたか
         self._goal: Optional[Tuple[float, float, float]] = None
         self._remaining_ms = 0.0
         self._prev_state: Optional[str] = None           # PAUSE に落ちる前の状態
@@ -77,6 +83,7 @@ class ThModel:
         self._last_hb_version = version
         if version == self.interface_version:     # 版が違うものは受信に数えない（th §3.4）
             self._last_valid_hb_ms = now_ms
+            self._ever_valid_hb = True
 
     def link_ok(self) -> bool:
         return (self._last_valid_hb_ms is not None
@@ -98,6 +105,8 @@ class ThModel:
         if self.mode == "AUTO_MEASURE" and self.state in RUNNING_STATES and not self.link_ok():
             self._pause()
         if self.mode == "AUTO_MEASURE" and self.state in ("NAV", "ALIGN"):
+            if self.state == "NAV" and self.blocked:
+                self.state = "BLOCKED"        # reroute・goal のあと塞がっていれば次の周期で BLOCKED
             self._remaining_ms -= dt
             if self._remaining_ms <= 0.0:
                 self.x, self.y, self.yaw = self._goal
@@ -125,8 +134,8 @@ class ThModel:
     # --- 試験用の操作（人・環境） ---
     def human_enter_auto(self) -> bool:
         """人が「自律測定」→「許可する」（-120）。測定機能と通信できなければ拒否（False）。
-        入るたびに地図を作り直す（世代が変わる）。"""
-        if not self.link_ok():
+        入るたびに地図を作り直す（世代が変わる）。IDLE からだけ入れる。"""
+        if self.mode != "IDLE" or not self.link_ok():
             return False
         self.mode = "AUTO_MEASURE"
         self.state = "WAIT"
@@ -143,7 +152,42 @@ class ThModel:
         self._finish_pending("CANCELLED", "mode_exit")
         self.mode = "IDLE"
         self.state = "NONE"
+        self.reentry_required = False     # モードを抜けたら入り直しの要否は下りる（th §6.2）
         self._prev_state = None
+        self._prev_mode = ""
+
+    def _hold(self, mode: str) -> None:
+        """非常停止・手押しでモードごと ESTOP・CARRY へ。目的地は持ったまま結果を出さない。"""
+        if self.mode in ("ESTOP", "CARRY"):
+            return
+        self._prev_mode, self._prev_mode_state = self.mode, self.state
+        if self.mode == "AUTO_MEASURE":
+            self._prev_state = self.state   # 戻ったあとの meas.start の行き先
+        self.mode, self.state = mode, "NONE"
+
+    def human_estop(self) -> None:
+        self._hold("ESTOP")
+
+    def human_carry(self) -> None:
+        self._hold("CARRY")
+
+    def _release_hold(self) -> None:
+        if self.mode not in ("ESTOP", "CARRY"):
+            return
+        self.mode = self._prev_mode or "IDLE"
+        if self.mode == "AUTO_MEASURE":
+            self.state = "PAUSE"            # 非常停止・手押しからの戻り先は PAUSE（走り出さない）
+        else:
+            self.state = self._prev_mode_state or "NONE"
+        self._prev_mode = ""
+
+    def human_estop_release(self) -> None:
+        """非常停止を解く。目的地は持ったまま AUTO_MEASURE/PAUSE へ戻る。"""
+        self._release_hold()
+
+    def human_carry_release(self) -> None:
+        """手押しを終わる（「停止を解く」）。ほかは非常停止と同じ。"""
+        self._release_hold()
 
     def human_jog(self) -> None:
         """人のジョグ（PAUSE へ。目的地は持ったまま。結果は出さない）。"""
@@ -160,11 +204,14 @@ class ThModel:
                 self.state = "NAV"
 
     def lose_localization(self) -> None:
-        """自己位置を見失う（-142）。目的地は CANCELLED + localization_lost。"""
+        """自己位置を見失う（-142）。ESTOP に落とし、目的地は CANCELLED + localization_lost。"""
+        was_auto = self.mode == "AUTO_MEASURE"
         self._finish_pending("CANCELLED", "localization_lost")
         self.reentry_required = True
-        self.state = "PAUSE"
         self._prev_state = None
+        if was_auto:
+            self._prev_mode, self._prev_mode_state = "AUTO_MEASURE", "PAUSE"
+        self.mode, self.state = "ESTOP", "NONE"
 
     # --- 内部 ---
     def _pause(self) -> None:
@@ -182,27 +229,36 @@ class ThModel:
     def _reply(self, cid: str, accepted: bool, reason: str = "") -> None:
         self.out_replies.append(ThReply(cid, accepted, reason, self.mode, self.state))
 
+    _KNOWN_COMMANDS = ("meas.goal", "meas.reroute", "meas.start", "meas.stop", "meas.abort",
+                       "meas.finish", "meas.turn", "meas.translate", "meas.set_limits",
+                       "meas.done")
+
     def _reject_reason(self, cid: str, cmd: str, args: dict) -> Optional[str]:
-        if cid == "":
+        # ① bad_argument（版・途絶より先）
+        if cid == "" or not cmd.startswith("meas.") or cmd not in self._KNOWN_COMMANDS:
             return "bad_argument"
-        if self._last_hb_version is not None and self._last_hb_version != self.interface_version:
+        if cid in self._seen_ids:           # 進行中・完了済みの id の重複は bad_argument
+            return "bad_argument"
+        # ② 版（版の合う受信が一度も無いときだけ。一度受けたあとは途絶の判定）
+        if (not self._ever_valid_hb and self._last_hb_version is not None
+                and self._last_hb_version != self.interface_version):
             return "version_mismatch"
+        # ③ 途絶
         if not self.link_ok():
             return "link_lost"
         return self._reject_by_state(cmd, args)
 
     def _reject_by_state(self, cmd: str, args: dict) -> Optional[str]:
-        if cmd in KNOWN_UNSUPPORTED or cmd.startswith("ui."):
-            return "state_not_accepting"           # ui.* は拒否する（th §3.1）
-        if cmd not in ("meas.goal", "meas.reroute", "meas.start", "meas.stop", "meas.abort",
-                       "meas.finish"):
-            return "bad_argument"
+        if cmd in KNOWN_UNSUPPORTED:
+            return "state_not_accepting"  # ADJUST が無い簡略化（meas.* の未知は bad_argument で済む）
+        # reentry_required を見る行は goal（WAIT）・start（PAUSE）だけ。ESTOP の間も
+        # localization_lost で拒否する（自律測定を抜けて入り直すまで）。
+        if cmd in ("meas.goal", "meas.start") and self.reentry_required:
+            return "localization_lost"
         if self.mode != "AUTO_MEASURE":
             return "state_not_accepting"
         st = self.state
         if cmd == "meas.goal":
-            if self.reentry_required:
-                return "localization_lost"
             if st != "WAIT":
                 return "state_not_accepting"
             if args.get("map_instance_id", "") != self.map_instance_id:
@@ -213,11 +269,9 @@ class ThModel:
             if st not in ("NAV", "BLOCKED"):
                 return "state_not_accepting"
         elif cmd == "meas.start":
-            if self.reentry_required:
-                return "localization_lost"
             if st != "PAUSE":
                 return "state_not_accepting"
-            if self.corner_obstacle and self._prev_state in ("NAV", "ALIGN"):
+            if self.corner_obstacle and self._prev_state in ("NAV", "BLOCKED", "ALIGN"):
                 return "corner_obstacle"
         elif cmd == "meas.stop":
             if st not in RUNNING_STATES:
@@ -233,17 +287,20 @@ class ThModel:
             self._reply(cid, False, reason)
             return
         self._reply(cid, True)
+        self._seen_ids.add(cid)
         if cmd == "meas.goal":
             self.pending = (cid, cmd)
             self.pending_command_id = cid
             self._goal = (args["x"], args["y"], args["yaw"])
             self._remaining_ms = self.nav_time_ms
-            self.state = "BLOCKED" if self.blocked else "NAV"
+            self.state = "NAV"              # 塞がっていれば次の周期で BLOCKED
             return
         if cmd == "meas.reroute":
-            self.state = "BLOCKED" if self.blocked else "NAV"   # 目的地はもとの指示のまま
+            self.state = "NAV"              # 目的地はもとの指示のまま。塞がっていれば次で BLOCKED
         elif cmd == "meas.start":
-            self.state = self._prev_state or "WAIT"
+            # 止める前が NAV・BLOCKED なら NAV、ALIGN なら ALIGN、ほかは WAIT（th §6.2）
+            prev = self._prev_state
+            self.state = "NAV" if prev in ("NAV", "BLOCKED") else "ALIGN" if prev == "ALIGN" else "WAIT"
             self._prev_state = None
         elif cmd == "meas.stop":
             self._pause()
@@ -255,6 +312,7 @@ class ThModel:
             self._finish_pending("CANCELLED", "finished")
             self.mode = "IDLE"
             self.state = "NONE"
+            self.reentry_required = False   # モードを抜けたら下りる
             self._prev_state = None
         self.out_results.append(ThResult(cid, cmd, "DONE", ""))   # すぐ DONE（§3.1 の表）
 

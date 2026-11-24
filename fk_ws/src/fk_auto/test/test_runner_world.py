@@ -63,7 +63,7 @@ class World:
 
     def __init__(self, panels: List[WPanel], mechanism: Optional[bool] = False,
                  lift_height_mm: float = 0.0, arm=None, params: Optional[Params] = None,
-                 th_kw=None, lift_kw=None, ss_kw=None):
+                 th_kw=None, lift_kw=None, ss_kw=None, command_id_prefix=None):
         self.panels = panels
         # mechanism=False（測定機構なし）はバイパスで入り、True はバイパスでない（§2.3）
         self.p = params or Params(mechanism_bypass=not bool(mechanism))
@@ -73,7 +73,8 @@ class World:
         self.lift = FakeLift(height_mm=lift_height_mm, **lift_kw)
         self.ss = FakeSs(responder=self.respond, **(ss_kw or {}))
         self.arm = arm if arm is not None else NoMechanism(self.p)
-        self.runner = Runner(self.th, self.lift, self.ss, self.arm, self.p)
+        self.runner = Runner(self.th, self.lift, self.ss, self.arm, self.p,
+                             command_id_prefix=command_id_prefix)
         self.sim = Sim(self.runner, self.th, self.lift, self.ss,
                        self.arm if hasattr(self.arm, "advance") else None)
         self.hide: set = set()           # 見えなくする盤の番号（見つからない筋書き用）

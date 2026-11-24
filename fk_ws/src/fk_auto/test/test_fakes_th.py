@@ -75,11 +75,47 @@ def test_reject_empty_command_id_first():
     assert t.replies[-1].reject_reason == "bad_argument"
 
 
-def test_reject_version_mismatch_judged_on_heartbeat_version():
-    t = entered()
-    t.tick(hb="2")                       # 版違いの生存確認
+def _never_valid():
+    t = Th()
+    t.m._ever_valid_hb = False           # できたてに版の合う受信が無い状態へ戻す
+    t.m._last_valid_hb_ms = None
+    return t
+
+
+def test_reject_version_mismatch_only_before_any_valid_heartbeat():
+    # 版の合う受信が一度も無いときだけ version_mismatch（DetailedDesign-auto.md §2.7）
+    t = _never_valid()
+    t.tick(hb="2")                       # 版違いだけ届いた
     cid = goal(t, hb="2")
     assert t.reply(cid).reject_reason == "version_mismatch"
+
+
+def test_wrong_version_after_valid_heartbeat_is_link_lost_not_version_mismatch():
+    t = entered()                        # 版の合う受信が一度ある
+    t.tick(hb="2")                       # 版違いの生存確認（数えられない）
+    t.tick(1500, hb="2")                 # 最後の有効な受信から途絶
+    cid = goal(t, hb="2")
+    assert t.reply(cid).reject_reason == "link_lost"
+
+
+def test_duplicate_command_id_is_bad_argument_before_version_and_link():
+    t = entered()
+    cid = goal(t)                        # 進行中の id
+    dup = t.send("meas.stop", cid=cid)
+    assert t.reply(dup).reject_reason == "bad_argument"
+    t.tick(3000)                         # 到着して終わっても覚えている
+    dup2 = t.send("meas.stop", cid=cid)
+    assert t.reply(dup2).reject_reason == "bad_argument"
+    t2 = entered()
+    t2.m._ever_valid_hb = False          # 版の合う受信が無い状態へ戻す
+    t2.m._last_valid_hb_ms = None
+    t2.tick(hb="2")
+    cid2 = goal(t2, hb="2")              # 拒否された id は覚えない（受理したものだけ）
+    assert t2.reply(cid2).reject_reason == "version_mismatch"
+    t2.tick(hb="1")
+    retry = t2.send("meas.goal", cid=cid2, map_instance_id=t2.m.map_instance_id,
+                    x=1.0, y=0.0, yaw=0.0)
+    assert t2.reply(retry).accepted
 
 
 def test_reject_link_lost_after_timeout_and_before_any_heartbeat():
@@ -124,9 +160,17 @@ def test_goal_only_in_wait_with_matching_map_and_no_corner_obstacle():
 
 def test_unsupported_and_ui_commands_rejected():
     t = entered()
-    for cmd in ("meas.turn", "meas.translate", "ui.start"):
+    for cmd in ("meas.turn", "meas.translate"):      # ADJUST が無い簡略化
         cid = t.send(cmd)
         assert t.reply(cid).reject_reason == "state_not_accepting"
+    for cmd in ("ui.start", "meas.bogus"):          # meas. 以外・未知の meas.* は bad_argument
+        cid = t.send(cmd)
+        assert t.reply(cid).reject_reason == "bad_argument"
+    # bad_argument は版・途絶より先（版違いだけの th でも bad_argument）
+    t2 = _never_valid()
+    t2.tick(hb="2")
+    cid = t2.send("meas.bogus", hb="2")
+    assert t2.reply(cid).reject_reason == "bad_argument"
 
 
 @pytest.mark.parametrize("cmd,state", [("meas.reroute", "WAIT"), ("meas.start", "WAIT"),
@@ -248,6 +292,75 @@ def test_goal_rejected_while_reentry_required():
     t.m.lose_localization()
     cid = goal(t)
     assert t.reply(cid).reject_reason == "localization_lost"
+
+
+# --- 非常停止・手押し（ESTOP・CARRY）-------------------------------------------
+
+def test_estop_holds_goal_and_release_returns_to_pause_then_start_continues():
+    t = entered()
+    g = goal(t)
+    t.m.human_estop()
+    assert (t.m.mode, t.m.state) == ("ESTOP", "NONE")
+    t.tick(3000)
+    assert t.res(g) == []                # 目的地を持ったまま結果を出さない
+    t.m.human_estop_release()
+    assert (t.m.mode, t.m.state) == ("AUTO_MEASURE", "PAUSE")
+    t.tick(3000)
+    assert t.res(g) == []                # 解除後も自分では走らない
+    t.send("meas.start")
+    assert t.m.state == "NAV"
+    t.tick(3000)
+    assert [r.result for r in t.res(g)] == ["ARRIVED"]
+
+
+def test_carry_holds_goal_like_estop():
+    t = entered()
+    g = goal(t)
+    t.m.human_carry()
+    assert (t.m.mode, t.m.state) == ("CARRY", "NONE")
+    t.tick(3000)
+    assert t.res(g) == []
+    t.m.human_carry_release()
+    assert (t.m.mode, t.m.state) == ("AUTO_MEASURE", "PAUSE")
+    t.send("meas.start")
+    t.tick(3000)
+    assert [r.result for r in t.res(g)] == ["ARRIVED"]
+
+
+def test_start_from_blocked_returns_to_nav_and_from_align_to_align():
+    t = entered()
+    goal(t)
+    t.m.set_blocked(True)
+    t.send("meas.stop")                 # BLOCKED から PAUSE
+    assert t.m.state == "PAUSE"
+    t.m.set_blocked(False)
+    t.send("meas.start")
+    assert t.m.state == "NAV"           # 止める前が BLOCKED なら NAV（BLOCKED ではない）
+    t2 = entered()
+    goal(t2)
+    t2.m.state = "ALIGN"
+    t2.send("meas.stop")
+    t2.send("meas.start")
+    assert t2.m.state == "ALIGN"
+
+
+def test_enter_auto_only_from_idle():
+    t = entered()
+    assert not t.m.human_enter_auto()   # すでに入っている
+    t.m.human_estop()
+    assert not t.m.human_enter_auto()
+
+
+def test_localization_lost_goes_to_estop_and_exit_clears_reentry():
+    t = entered()
+    g = goal(t)
+    t.m.lose_localization()
+    assert (t.m.mode, t.m.state) == ("ESTOP", "NONE")
+    t.tick()
+    assert [(r.result, r.reason) for r in t.res(g)] == [("CANCELLED", "localization_lost")]
+    assert t.m.status().reentry_required
+    t.m.human_exit()
+    assert (t.m.mode, t.m.state) == ("IDLE", "NONE") and not t.m.status().reentry_required
 
 
 # --- 状態 BLOCKED ---------------------------------------------------------------

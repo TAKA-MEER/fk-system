@@ -109,20 +109,41 @@ class Harness:
         self.cmd = self.probe.create_client(MeasureCommand, '/measure/command')
         self.auto_cmd = self.probe.create_client(AutoCommand, '/fk/auto/command')
         self._stop = False
+        self._runner_dead = False
         self.execs = []
         for n in (self.runner, self.fake, self.probe):
             ex = SingleThreadedExecutor()
             ex.add_node(n)
-            t = threading.Thread(target=self._spin, args=(ex,), daemon=True)
+            t = threading.Thread(target=self._spin, args=(ex, n is self.runner), daemon=True)
             t.start()
             self.execs.append((ex, t))
 
-    def _spin(self, ex):
-        while not self._stop:
+    def _spin(self, ex, is_runner=False):
+        while not self._stop and not (is_runner and self._runner_dead):
             try:
                 ex.spin_once(timeout_sec=0.02)
             except Exception as e:   # 試験の道具: 死なずに記録する
                 self.errors.append(e)
+
+    def restart_runner(self):
+        """auto_runner を作り直す（fake_th は動かしたまま）。昇降機・ss の偽物も作り直す。"""
+        old_ex, old_t = self.execs[0]
+        self._runner_dead = True
+        old_t.join(timeout=2.0)
+        old_ex.shutdown()
+        self.runner.destroy_node()
+        self.lift = FakeLift(mechanism_attached=False)
+        self.ss = FakeSs(responder=self._respond)
+        pre = [self.lift.advance, self.ss.advance, self._maybe_break]
+        self.runner = AutoRunner(lift=self.lift, ss=self.ss, pre_step=pre,
+                                 parameter_overrides=_overrides(RUNNER_PARAMS))
+        self._runner_dead = False
+        ex = SingleThreadedExecutor()
+        ex.add_node(self.runner)
+        t = threading.Thread(target=self._spin, args=(ex, True), daemon=True)
+        t.start()
+        self.execs[0] = (ex, t)
+        return self.runner
 
     def _maybe_break(self, now_ms):
         if self.break_step:
