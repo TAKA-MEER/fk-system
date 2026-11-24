@@ -127,6 +127,23 @@ def classify_end(state, results, selected_ids):
     return "running"
 
 
+ACTIVE_SCREEN_ID = "S-60"
+ACTIVE_SCREEN_PERIOD_S = 0.5
+
+
+def active_screen_fields(client_id, last_input_sec, last_input_nanosec=0):
+    """`/ui/active_screen` の在席の欄（th の `ActiveScreen` 型の形）。
+
+    `run.py` が 2 Hz で出す。`screen_id` は `S-60`（th の AUTO_MEASURE）で
+    固定。不在だと th が `speed_limit stop` で `/cmd_vel` が 0 のままになる
+    （th の知らせ 2026-11-24）。
+    """
+    return {"screen_id": ACTIVE_SCREEN_ID, "client_id": client_id,
+            "interacting": True,
+            "last_input_sec": int(last_input_sec),
+            "last_input_nanosec": int(last_input_nanosec)}
+
+
 def format_table(match_rows, results):
     """盤ごとの結果と正解との対応を表の行にする（文字列の列）。"""
     result_by_id = {r["panel_id"]: r for r in results}

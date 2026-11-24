@@ -71,15 +71,11 @@ bash "$SS_REPO/scripts/ss.sh" status        # ss の状態が IDLE（待ち）�
 
 ## 自律測定を通す（段 3）
 
-まず、th を `IDLE` に入れる。sim の th はそのままでは `INIT/CHECK` のまま
-`IDLE` に入れない。理由: `evt.link_ok`（`INIT/CHECK` → `IDLE` の遷移）を
-出すには物理非常停止（`/safety/estop_hw`）の受信が必要だが、sim でそれを
-出す側（`esp32_bridge`）が起動していない。th の標準の手段で開発モードの
-疎通の無視を入れると `IDLE` に入る（コードの変更はしない。`sim_up.sh`
-には自動で組み込まない）:
+th を `IDLE` に入れるために開発モードの手設定（`dev_mode`・
+`dev_ignore_link`）は要らない。th の直し（`103a6e42`。sim の `link_ok` が
+物理非常停止の受信を要らなくなった）で `IDLE` に入る。確認:
 
 ```bash
-docker exec sim_th bash -c 'source /opt/ros/humble/setup.bash && source /root/th_ws/install/setup.bash && export ROS_DOMAIN_ID=78 && ros2 param set connectivity_checker dev_mode true && ros2 param set connectivity_checker dev_ignore_link true'
 docker exec sim_fk bash -c 'source /opt/ros/humble/setup.bash && source /root/fk_ws/install/setup.bash && export ROS_DOMAIN_ID=78 && ros2 topic echo /measure/status --once'  # mode: IDLE を確かめる
 ```
 

@@ -28,13 +28,15 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import random
 import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from check import (classify_end, count_results, expected_visible, format_missing,  # noqa: E402
-                   format_table, match_layout_to_truth, missing_visible)
+from check import (ACTIVE_SCREEN_PERIOD_S, active_screen_fields, classify_end,  # noqa: E402
+                   count_results, expected_visible, format_missing, format_table,
+                   match_layout_to_truth, missing_visible)
 
 
 def main():
@@ -53,7 +55,7 @@ def main():
     from rclpy.node import Node
     from fk_msgs.msg import AutoState, Layout, PanelResults
     from fk_msgs.srv import AutoCommand
-    from th_system_msgs.msg import MeasureStatus
+    from th_system_msgs.msg import ActiveScreen, MeasureStatus
     from th_system_msgs.srv import UiTrigger
 
     out_dir = args.out or os.path.join(
@@ -100,6 +102,25 @@ def main():
             {"panel_id": r.panel_id, "result": r.result,
              "reason": r.reason, "side": r.side} for r in msg.results]}
         record("results", latest["results"])
+
+    # 測定機能の画面の在席（/ui/active_screen、2 Hz）。無いと th が
+    # speed_limit stop で機体を動かさない（DetailedDesign-sim.md §7.1）。
+    client_id = f"fk-sim-{random.randint(0, 0xFFFFFFFF):08x}"
+    pub_screen = node.create_publisher(ActiveScreen, "/ui/active_screen", 10)
+
+    def publish_screen():
+        now = node.get_clock().now()
+        f = active_screen_fields(client_id, now.nanoseconds / 1e9,
+                                 now.nanoseconds % 1_000_000_000)
+        msg = ActiveScreen()
+        msg.screen_id = f["screen_id"]
+        msg.client_id = f["client_id"]
+        msg.interacting = f["interacting"]
+        msg.last_input.sec = f["last_input_sec"]
+        msg.last_input.nanosec = f["last_input_nanosec"]
+        pub_screen.publish(msg)
+
+    node.create_timer(ACTIVE_SCREEN_PERIOD_S, publish_screen)
 
     node.create_subscription(MeasureStatus, "/measure/status", on_th, 10)
     node.create_subscription(AutoState, "/fk/auto/state", on_state, 10)
