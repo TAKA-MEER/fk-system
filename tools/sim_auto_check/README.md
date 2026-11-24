@@ -15,8 +15,8 @@ DetailedDesign-sim.md §7.1 の道具の行。
 docker exec sim_fk bash -c 'set +u; source /opt/ros/humble/setup.bash; source /root/fk_ws/install/setup.bash; export ROS_DOMAIN_ID=78; trap "chown -R '"$(id -u):$(id -g)"' /root/fk_ws/sim_out/auto_check" EXIT; python3 /work/tools/sim_auto_check/run.py --scene /work/sim_out/scenes/public_room'
 ```
 
-th を `IDLE` に入れる手順（`dev_mode` の疎通の無視。なぜ要るか）は
-`fk_ws/sim/README.md` の段 3 の節に書いてある。
+th を `IDLE` に入れる開発モードの手設定（`dev_mode`・`dev_ignore_link`）は
+要らない（th の直し `103a6e42` で sim の `link_ok` が物理非常停止を要らなくなった）。
 
 `--panels P001,P002` で選ぶ盤を絞れる（既定は配置図の全部）。
 `--out` で出力先を変えられる（既定は `sim_out/auto_check/<時刻>/`）。
