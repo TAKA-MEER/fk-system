@@ -2,7 +2,7 @@
 2 m の盤の背面側を回り、結果に側が付く（偽の th・偽の ss を ROS 2 で通す）。"""
 import pytest
 
-from conftest import wait_until
+from conftest import begin, wait_until
 from test_integration_ss import SsHarness, ids_of
 
 
@@ -30,7 +30,7 @@ def test_deep_panel_back_after_all_front(make_ss_harness):
     h = make_ss_harness(panels=[(3.0, 0.0, 2.0), (3.0, 3.0, 1.0)],
                         fake_params=dict(nav_time_ms=300))
     h.enter_auto()
-    assert h.command('auto.begin')[0]
+    begin(h)
     assert wait_until(lambda: len(ids_of(h)) == 2 and h.phase == 'SELECT', LONG_S), h.state
     assert h.command('auto.start', ids=ids_of(h))[0]
     assert wait_until(lambda: h.phase == 'FINISH', LONG_S), h.state
