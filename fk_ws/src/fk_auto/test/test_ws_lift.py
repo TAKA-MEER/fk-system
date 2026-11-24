@@ -8,7 +8,9 @@
 import importlib.util
 import json
 import os
+import shutil
 import socket
+import struct
 import subprocess
 import sys
 import threading
@@ -206,8 +208,7 @@ def test_lower_to_bottom_and_release():
             st = port.status()
             return st is not None and st.height_above_bottom_mm == 0.0
         assert _wait_until(reached_zero, timeout_s=20), "下がらない"
-        # 偽物は下端を自分で立てない。試験の側で立てる
-        srv.post_fake({"bottom": True})
+        # hve の偽物は 0 に着くと下端スイッチを自分で立てる（c798949 以降）
         assert _wait_until(
             lambda: port.status() is not None and port.status().at_bottom is True,
             timeout_s=5), "下端にならない"
@@ -344,3 +345,181 @@ def test_reconnect_after_fake_restart():
     finally:
         port.close()
         srv.stop()
+
+
+# ---------------------------------------------------------------------------
+# 自前の小さなサーバ（socket だけ。フレームの分割・state を送らない場面用）
+# ---------------------------------------------------------------------------
+
+def _server_frame(text):
+    payload = text.encode("utf-8")
+    n = len(payload)
+    if n < 126:
+        head = bytes([0x81, n])
+    elif n < 65536:
+        head = bytes([0x81, 126]) + struct.pack(">H", n)
+    else:
+        head = bytes([0x81, 127]) + struct.pack(">Q", n)
+    return head + payload
+
+
+def _recv_exact(conn, n):
+    data = b""
+    while len(data) < n:
+        chunk = conn.recv(n - len(data))
+        if not chunk:
+            raise RuntimeError("closed")
+        data += chunk
+    return data
+
+
+def _read_client_frame(conn):
+    """client → server の frame（mask あり）を 1 つ読む。"""
+    b0, b1 = _recv_exact(conn, 2)
+    length = b1 & 0x7F
+    if length == 126:
+        length = struct.unpack(">H", _recv_exact(conn, 2))[0]
+    elif length == 127:
+        length = struct.unpack(">Q", _recv_exact(conn, 8))[0]
+    mask = _recv_exact(conn, 4) if b1 & 0x80 else None
+    payload = _recv_exact(conn, length) if length else b""
+    if mask:
+        payload = bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
+    return b0 & 0x0F, payload
+
+
+class _RawLiftServer:
+    """handshake に答えて hello を数え、on_conn(conn, server) を呼ぶだけのサーバ。"""
+
+    def __init__(self, on_conn):
+        self.on_conn = on_conn
+        self.hellos = 0
+        self._lock = threading.Lock()
+        self._listener = socket.socket()
+        self._listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._listener.bind(("127.0.0.1", 0))
+        self.port = self._listener.getsockname()[1]
+        self._listener.listen(8)
+        self._listener.settimeout(0.1)
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._accept_loop, daemon=True)
+        self._thread.start()
+
+    def _accept_loop(self):
+        while not self._stop.is_set():
+            try:
+                conn, _ = self._listener.accept()
+            except (socket.timeout, TimeoutError):
+                continue
+            except OSError:
+                return
+            threading.Thread(target=self._handle, args=(conn,), daemon=True).start()
+
+    def _handle(self, conn):
+        try:
+            conn.settimeout(5)
+            data = b""
+            while b"\r\n\r\n" not in data:
+                chunk = conn.recv(4096)
+                if not chunk:
+                    return
+                data += chunk
+            conn.sendall(b"HTTP/1.1 101 Switching Protocols\r\n"
+                         b"Upgrade: websocket\r\nConnection: Upgrade\r\n\r\n")
+            opcode, payload = _read_client_frame(conn)
+            if opcode == 1 and json.loads(payload).get("t") == "hello":
+                with self._lock:
+                    self.hellos += 1
+            self.on_conn(conn, self)
+        except Exception:
+            pass
+        finally:
+            try:
+                conn.close()
+            except OSError:
+                pass
+
+    def hello_count(self):
+        with self._lock:
+            return self.hellos
+
+    def stop(self):
+        self._stop.set()
+        self._thread.join(timeout=2)
+        try:
+            self._listener.close()
+        except OSError:
+            pass
+
+
+def test_split_frame_does_not_reconnect():
+    """state のフレームを 2 つに分けて送っても、時間切れで繋ぎ直さないこと。"""
+    state = json.dumps(_state())
+    frame = _server_frame(state)
+    cut = 7                       # ヘッダ＋中身の途中
+    assert len(frame) > cut + 10
+
+    def on_conn(conn, _srv):
+        conn.sendall(frame[:cut])
+        time.sleep(0.25)          # 接続の poll の時間切れ（50 ms）より長い
+        conn.sendall(frame[cut:])
+        conn.settimeout(5)
+        while True:               # あとは client の frame を捨てるだけ
+            if not conn.recv(4096):
+                return
+
+    srv = _RawLiftServer(on_conn)
+    port = WsLiftPort(host="127.0.0.1", port=srv.port, cmd_period_ms=50,
+                      state_stale_ms=10000, lower_speed_mmps=100)
+    try:
+        assert _wait_until(
+            lambda: port.status() is not None
+            and port.status().height_above_bottom_mm == 800.0, timeout_s=5), \
+            "分割された state を受けられない"
+        time.sleep(1.0)
+        assert srv.hello_count() == 1, "フレームの途中で繋ぎ直した"
+    finally:
+        port.close()
+        srv.stop()
+
+
+def test_no_state_reconnects():
+    """state が一度も来ない接続は、lift_state_stale_ms を過ぎたら繋ぎ直すこと。"""
+    def on_conn(conn, _srv):
+        conn.settimeout(10)
+        while True:
+            if not conn.recv(4096):
+                return
+
+    srv = _RawLiftServer(on_conn)
+    port = WsLiftPort(host="127.0.0.1", port=srv.port, cmd_period_ms=50,
+                      state_stale_ms=500, lower_speed_mmps=100)
+    try:
+        assert _wait_until(lambda: srv.hello_count() >= 2, timeout_s=8), \
+            "state が来ないのに繋ぎ直さない"
+    finally:
+        port.close()
+        srv.stop()
+
+
+# ---------------------------------------------------------------------------
+# hve の偽物の改訂（下降で 0 に着くと下端を自分で立てる版か）
+# ---------------------------------------------------------------------------
+
+def test_hve_fake_revision():
+    """hve の作業ツリーが c798949 以降（偽物が下端を自分で立てる版）であること。"""
+    if FAKE_PATH is None:
+        pytest.skip("hve の偽物が無い環境")
+    hve_root = os.path.dirname(os.path.dirname(FAKE_PATH))
+    git = shutil.which("git")
+    if git is not None and os.path.exists(os.path.join(hve_root, ".git")):
+        # コンテナでは所有者が違うので safe.directory を付ける
+        r = subprocess.run([git, "-c", f"safe.directory={hve_root}", "-C", hve_root,
+                            "merge-base", "--is-ancestor", "c798949", "HEAD"])
+        assert r.returncode == 0, "hve の作業ツリーが c798949 より前"
+    else:
+        # git が無い環境（コンテナ）では、偽物の内容で確かめる
+        # （下端で 0 に丸めて bottom を立てるコードがあるか）
+        with open(FAKE_PATH, encoding="utf-8") as f:
+            src = f.read()
+        assert "下端スイッチの真似" in src, "偽物が下端を自分で立てない版かも"
