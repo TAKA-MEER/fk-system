@@ -121,8 +121,9 @@ def main():
     end = time.time() + args.timeout
     try:
         # 1. th が IDLE で生存確認が届くまで待つ
-        record("wait", {"what": "th IDLE + link_ok"})
-        if not spin_until(lambda: latest["th"].get("state") == "IDLE"
+        # th の MeasureStatus は mode=IDLE・state=NONE（state の IDLE は無い）。
+        record("wait", {"what": "th mode IDLE + link_ok"})
+        if not spin_until(lambda: latest["th"].get("mode") == "IDLE"
                           and latest["th"].get("link_ok"), end):
             record("end", {"reason": "th_not_ready", **latest})
             return 2

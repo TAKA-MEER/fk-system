@@ -117,6 +117,10 @@ services:
       # `fk_ws` の compose（fk_robot）と同じマウント。build・install はコンテナ内に置く
       # （ホストに root 所有のものを作らない）。th_import・ss_import は
       # `fk_ws/scripts/import_th.sh`・`import_ss.sh` で先に取り込むこと。
+      # 道具（tools/sim_auto_check）の出力先をホストに残す（sim_out）。
+      - type: bind
+        source: ${FK_REPO:?}/sim_out
+        target: /root/fk_ws/sim_out
       - type: bind
         source: ${FK_WS:?}/src
         target: /root/fk_ws/src
