@@ -1,6 +1,6 @@
 """WP-AUTO-03 結合試験: auto_runner（FakeLift・FakeSs を渡す）と fake_th（FakeThNode）を ROS 2 で通し、
 /fk/auto/command で操作して /fk/auto/* を見る。"""
-from conftest import ALLOWED_CMDS, MARGIN_S, wait_until
+from conftest import ALLOWED_CMDS, MARGIN_S, begin, wait_until
 
 LONG_S = 30.0
 
@@ -11,11 +11,6 @@ def ids_of(h):
 
 def result_rows(h):
     return [(r.panel_id, r.result, r.reason) for r in h.results[-1].results] if h.results else []
-
-
-def begin(h):
-    """auto.begin を、状態が読み取れるようになるまで待って出す（状態の届く順に頼らない）。"""
-    assert wait_until(lambda: h.command('auto.begin')[0], LONG_S)
 
 
 def to_select(h):
@@ -32,8 +27,8 @@ def test_e_two_panels_are_visited_and_listed(make_harness):
     assert h.layouts[-1].survey_reason == ''
     assert h.command('auto.start', ids=ids_of(h))[0]
     assert wait_until(lambda: h.phase == 'FINISH', LONG_S), h.state
-    assert sorted(result_rows(h)) == [('P001', 'SKIPPED', 'no_mechanism'),
-                                      ('P002', 'SKIPPED', 'no_mechanism')]
+    assert wait_until(lambda: sorted(result_rows(h)) == [('P001', 'SKIPPED', 'no_mechanism'),
+                                                         ('P002', 'SKIPPED', 'no_mechanism')], LONG_S), result_rows(h)
     assert h.th_commands and set(h.th_commands) <= ALLOWED_CMDS
     assert h.th_commands.count('meas.goal') == 2
     assert not h.errors
@@ -45,11 +40,11 @@ def test_mechanism_bypass_true_is_reported_and_flow_completes(make_harness):
     assert wait_until(lambda: h.state is not None, MARGIN_S)
     assert h.state.mechanism_bypass is True
     h.enter_auto()
-    assert h.command('auto.begin')[0]
+    begin(h)
     assert wait_until(lambda: len(ids_of(h)) == 1 and h.phase == 'SELECT', LONG_S)
     assert h.command('auto.start', ids=ids_of(h))[0]
     assert wait_until(lambda: h.phase == 'FINISH', LONG_S), h.state
-    assert result_rows(h) == [('P001', 'SKIPPED', 'no_mechanism')]
+    assert wait_until(lambda: result_rows(h) == [('P001', 'SKIPPED', 'no_mechanism')], LONG_S), result_rows(h)
     assert h.state.mechanism_bypass is True
     assert not h.errors
 
@@ -63,7 +58,7 @@ def test_mechanism_bypass_false_blocks_everything_when_arm_link_is_lost(make_har
     assert wait_until(lambda: h.state is not None, MARGIN_S)
     assert h.state.mechanism_bypass is False
     h.enter_auto()
-    assert h.command('auto.begin')[0]
+    begin(h)
     assert wait_until(lambda: len(ids_of(h)) == 1 and h.phase == 'SELECT', LONG_S)
     assert h.state.mechanism_bypass is False
     n_ss, n_lift, n_th = len(h.ss.requests), h.lift.lowers(), len(h.th_commands)
@@ -84,7 +79,7 @@ def test_f_without_lift_and_ss_ports_nothing_moves(make_harness):
     """(f) 口が無ければ動かない: meas.goal は届かず、gate_reason は state_unreadable。"""
     h = make_harness(ports=False)
     h.enter_auto()
-    assert h.command('auto.begin')[0]
+    begin(h)
     assert wait_until(lambda: h.phase == 'PREPARE' and h.gate_reason == 'state_unreadable', MARGIN_S)
     import time
     time.sleep(1.0)
@@ -107,7 +102,7 @@ def test_g_jog_pauses_and_run_continues_to_the_end(make_harness):
     assert h.phase == 'PAUSED' and 'meas.start' not in h.th_commands     # 自分からは発進しない
     assert h.command('auto.run')[0]
     assert wait_until(lambda: h.phase == 'FINISH', LONG_S), h.state
-    assert result_rows(h) == [('P001', 'SKIPPED', 'no_mechanism')]
+    assert wait_until(lambda: result_rows(h) == [('P001', 'SKIPPED', 'no_mechanism')], LONG_S), result_rows(h)
     assert h.th_commands.count('meas.goal') == 1 and h.th_commands.count('meas.start') == 1
 
 
@@ -128,7 +123,7 @@ def test_i_estop_pauses_not_idle_and_run_continues_after_release(make_harness):
     assert h.phase == 'PAUSED'                                     # 解除しただけでは走らない
     assert h.command('auto.run')[0]
     assert wait_until(lambda: h.phase == 'FINISH', LONG_S), h.state
-    assert result_rows(h) == [('P001', 'SKIPPED', 'no_mechanism')]
+    assert wait_until(lambda: result_rows(h) == [('P001', 'SKIPPED', 'no_mechanism')], LONG_S), result_rows(h)
     assert h.th_commands.count('meas.goal') == 1 and h.th_commands.count('meas.start') == 1
     assert not h.errors
 
@@ -147,7 +142,7 @@ def test_j_carry_pauses_not_idle_and_run_continues_after_release(make_harness):
     assert wait_until(lambda: h.state.th_mode == 'AUTO_MEASURE' and h.state.th_state == 'PAUSE', LONG_S)
     assert h.command('auto.run')[0]
     assert wait_until(lambda: h.phase == 'FINISH', LONG_S), h.state
-    assert result_rows(h) == [('P001', 'SKIPPED', 'no_mechanism')]
+    assert wait_until(lambda: result_rows(h) == [('P001', 'SKIPPED', 'no_mechanism')], LONG_S), result_rows(h)
     assert h.th_commands.count('meas.goal') == 1 and h.th_commands.count('meas.start') == 1
     assert not h.errors
 

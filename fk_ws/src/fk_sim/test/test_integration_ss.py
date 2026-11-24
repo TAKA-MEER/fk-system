@@ -17,7 +17,7 @@ from rclpy.parameter import Parameter
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from unique_identifier_msgs.msg import UUID
 
-from conftest import FAKE_PARAMS, RUNNER_PARAMS, body_rect, wait_until
+from conftest import FAKE_PARAMS, RUNNER_PARAMS, begin, body_rect, wait_until
 from fk_auto.auto_runner import AutoRunner
 from fk_auto.fakes import FakeLift, SsResponse
 from fk_msgs.msg import AutoState, Layout, PanelResults
@@ -149,7 +149,7 @@ class SsHarness:
 
     def to_select(self):
         self.enter_auto()
-        assert self.command('auto.begin')[0]
+        begin(self)
         assert wait_until(lambda: len(ids_of(self)) == 1 and self.phase == 'SELECT', LONG_S), \
             self.state
 
@@ -198,8 +198,10 @@ def test_fake_ss_rejection_gives_ss_rejected_and_does_not_stall(make_ss_harness)
     """fake_ss が依頼を断る → survey_reason が ss_rejected、止まらない（SELECT に出る）。"""
     h = make_ss_harness(reject=True)
     h.enter_auto()
-    assert h.command('auto.begin')[0]
+    begin(h)
     assert wait_until(lambda: h.phase == 'SELECT', LONG_S), h.state
+    assert wait_until(lambda: h.layouts and h.layouts[-1].survey_reason == 'ss_rejected', LONG_S), \
+        h.layouts[-1] if h.layouts else None
     assert h.layouts[-1].survey_reason == 'ss_rejected'
     assert h.layouts[-1].panels == []
     assert not h.errors
@@ -209,12 +211,12 @@ def test_foreign_cleanup_done_does_not_finish_the_request(make_ss_harness):
     """自分が出していない goal_id の後片付けの完了を受けても、依頼は終わらない。"""
     h = make_ss_harness(result_delay_ms=2500)
     h.enter_auto()
-    assert h.command('auto.begin')[0]
+    begin(h)
     assert wait_until(lambda: len(h.ssnode.fake.requests) >= 1, LONG_S)
     h.publish_foreign_cleanup()
     time.sleep(1.0)
     assert h.phase == 'SURVEY'      # 終わったことになっていない
-    assert wait_until(lambda: h.phase == 'SELECT', LONG_S), h.state
+    assert wait_until(lambda: h.phase == 'SELECT' and len(ids_of(h)) == 1, LONG_S), h.state
     assert len(ids_of(h)) == 1
 
 
@@ -222,7 +224,7 @@ def test_ss_version_2_does_not_send_the_request(make_ss_harness):
     """fake_ss の版が "2" → 依頼を出さない（gate_reason が state_unreadable）。"""
     h = make_ss_harness(ss_version='2')
     h.enter_auto()
-    assert h.command('auto.begin')[0]
+    begin(h)
     assert wait_until(lambda: h.phase == 'SURVEY' and h.gate_reason == 'state_unreadable',
                       LONG_S), h.state
     time.sleep(0.5)
@@ -286,7 +288,7 @@ def test_survey_finish_cancels_ss_and_cleanup_arrives(make_ss_harness):
     h = make_ss_harness()
     h.ssnode.fake.never_result = True
     h.enter_auto()
-    assert h.command('auto.begin')[0]
+    begin(h)
     assert wait_until(lambda: len(h.ssnode.fake.requests) >= 1 and h.phase == 'SURVEY', LONG_S), \
         h.state
     assert h.command('auto.finish')[0]

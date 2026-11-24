@@ -38,6 +38,12 @@ def wait_until(cond, timeout_s, interval_s=0.02):
     return bool(cond())
 
 
+def begin(h, timeout_s=30.0):
+    """auto.begin を、受け付けられるまで出し直す（SUT が th の状態を読むまで待つ）。
+    fake_th が状態を 10 Hz の周期でしか出さないため、入った直後に出すと拒否される。"""
+    assert wait_until(lambda: h.command('auto.begin')[0], timeout_s)
+
+
 def _overrides(params):
     return [Parameter(k, value=v) for k, v in params.items()]
 
