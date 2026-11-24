@@ -119,11 +119,12 @@ class _WsConnection:
             "Upgrade: websocket\r\nConnection: Upgrade\r\n"
             f"Sec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n"
         )
+        self._buf = b""
+        self._frag = bytearray()
         self._send_all(req.encode("ascii"))
         header = self._read_until(b"\r\n\r\n")
         if b" 101 " not in header.split(b"\r\n", 1)[0]:
             raise RuntimeError("websocket handshake failed")
-        self._buf = b""
         self._sock.settimeout(0.05)
 
     def _send_all(self, data: bytes) -> None:
@@ -140,14 +141,41 @@ class _WsConnection:
         self._buf = rest
         return head
 
-    def _recv_exact(self, n: int) -> bytes:
-        while len(self._buf) < n:
-            chunk = self._sock.recv(65536)
-            if not chunk:
-                raise RuntimeError("websocket closed")
-            self._buf += chunk
-        out, self._buf = self._buf[:n], self._buf[n:]
-        return out
+    def _try_frame(self):
+        """self._buf に完全なフレームが揃っていれば消費して (fin, opcode, payload) を返す。
+        揃っていなければ何も消費せず None を返す（時間切れは「まだ揃っていない」で、
+        接続の失敗ではない。TCP の分割や大きい frame でも呼び出し側は繋ぎ直さない）。"""
+        buf = self._buf
+        if len(buf) < 2:
+            return None
+        fin = bool(buf[0] & 0x80)
+        opcode = buf[0] & 0x0F
+        masked = buf[1] & 0x80
+        length = buf[1] & 0x7F
+        pos = 2
+        if length == 126:
+            if len(buf) < pos + 2:
+                return None
+            length = struct.unpack(">H", buf[pos:pos + 2])[0]
+            pos += 2
+        elif length == 127:
+            if len(buf) < pos + 8:
+                return None
+            length = struct.unpack(">Q", buf[pos:pos + 8])[0]
+            pos += 8
+        mask = None
+        if masked:
+            if len(buf) < pos + 4:
+                return None
+            mask = buf[pos:pos + 4]
+            pos += 4
+        if len(buf) < pos + length:
+            return None
+        payload = buf[pos:pos + length]
+        self._buf = buf[pos + length:]
+        if mask:
+            payload = bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
+        return fin, opcode, payload
 
     def send_text(self, text: str) -> None:
         payload = text.encode("utf-8")
@@ -163,25 +191,20 @@ class _WsConnection:
         self._send_all(head + mask + masked)
 
     def poll_text(self) -> Optional[str]:
-        """届いている text フレームを 1 つ返す。無ければ None。"""
-        chunks = []
+        """届いている text メッセージを 1 つ返す。無ければ None。
+        フレームが揃うまで待つ（時間切れは None で、接続の失敗ではない）。"""
         while True:
-            try:
-                b0, b1 = self._recv_exact(2)
-            except (socket.timeout, TimeoutError):
-                return b"".join(chunks).decode("utf-8", "replace") if chunks else None
-            fin = b0 & 0x80
-            opcode = b0 & 0x0F
-            masked = b1 & 0x80
-            length = b1 & 0x7F
-            if length == 126:
-                length = struct.unpack(">H", self._recv_exact(2))[0]
-            elif length == 127:
-                length = struct.unpack(">Q", self._recv_exact(8))[0]
-            mask = self._recv_exact(4) if masked else None
-            payload = self._recv_exact(length) if length else b""
-            if mask:
-                payload = bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
+            frame = self._try_frame()
+            if frame is None:
+                try:
+                    chunk = self._sock.recv(65536)
+                except (socket.timeout, TimeoutError):
+                    return None
+                if not chunk:
+                    raise RuntimeError("websocket closed")
+                self._buf += chunk
+                continue
+            fin, opcode, payload = frame
             if opcode == 0x8:      # close
                 raise RuntimeError("websocket closed by peer")
             if opcode == 0x9:      # ping -> pong（送り手は mask する）
@@ -189,10 +212,14 @@ class _WsConnection:
                 masked_pong = bytes(b ^ pong_mask[i % 4] for i, b in enumerate(payload))
                 self._send_all(bytes([0x8A, 0x80 | len(payload)]) + pong_mask + masked_pong)
                 continue
-            if opcode in (0x1, 0x2, 0x0):
-                chunks.append(payload)
+            if opcode in (0x1, 0x2):
+                self._frag = bytearray(payload)
+            elif opcode == 0x0:
+                self._frag += payload
             if fin:
-                return b"".join(chunks).decode("utf-8", "replace") if chunks else None
+                text = bytes(self._frag).decode("utf-8", "replace")
+                self._frag = bytearray()
+                return text
 
     def close(self) -> None:
         try:
@@ -306,6 +333,7 @@ class WsLiftPort(LiftPort):
             try:
                 conn = _WsConnection(self._host, self._port)
                 conn.send_text(json.dumps(HELLO))
+                connected_ms = _now_ms()
                 with self._lock:
                     self._press = 0          # press は接続ごと（§1.2）
                     self._press_active = False
@@ -323,10 +351,15 @@ class WsLiftPort(LiftPort):
                     with self._lock:
                         state = self._state
                     self._maybe_send(conn, state)
-                    # state が古くなったら自分で閉じて hello からやり直す
+                    # state が古くなったら自分で閉じて hello からやり直す。
+                    # 繋いだあと一度も来ないときも、繋いだ時刻から数える（一度も来ない接続で
+                    # 永久に留まらない）
                     with self._lock:
                         received = self._state_ms
-                    if received is not None and _now_ms() - received > self._stale_ms:
+                    now = _now_ms()
+                    if received is not None and now - received > self._stale_ms:
+                        break
+                    if received is None and now - connected_ms > self._stale_ms:
                         break
             except Exception:
                 time.sleep(0.05)
