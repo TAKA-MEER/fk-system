@@ -35,8 +35,8 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from check import (ACTIVE_SCREEN_PERIOD_S, active_screen_fields, classify_end,  # noqa: E402
-                   count_results, expected_visible, format_missing, format_table,
-                   match_layout_to_truth, missing_visible)
+                   count_results, expected_visible, format_failures, format_missing,
+                   format_table, match_layout_to_truth, missing_visible)
 
 
 def main():
@@ -198,7 +198,8 @@ def main():
             rclpy.spin_once(node, timeout_sec=0.1)
             results = latest["results"].get("results", [])
             cls = classify_end(latest["state"], results, selected)
-            if cls in ("finished_waiting", "halted", "rejected"):
+            if cls in ("finished_waiting", "finished_with_failures",
+                       "halted", "rejected"):
                 break
         else:
             cls = "timeout"
@@ -212,6 +213,8 @@ def main():
         truths = [p for p in scene["panels"] if p["id"] in expected]
         rows = match_layout_to_truth(layout_panels, truths)
         lines = format_table(rows, results)
+        if cls == "finished_with_failures":
+            lines += format_failures(results, selected)
         missing = missing_visible(layout_panels, scene)
         lines += format_missing(missing)
         for line in lines:

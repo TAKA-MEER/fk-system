@@ -38,6 +38,8 @@ th を `IDLE` に入れる開発モードの手設定（`dev_mode`・`dev_ignore
 
 `check.py`: 配置図と正解の対応（いちばん近い盤）・結果の数え方
 （`DONE` と `SKIPPED` を混ぜない）・段 3 の合格の判定・終わり方の分類。
+本システムが `FINISH` になったら合否にかかわらず終える（合格でなければ
+`finished_with_failures`。飛ばした盤と理由を表に出す）。
 ホストで回る試験は `test/test_check.py`:
 
 ```bash

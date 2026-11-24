@@ -66,6 +66,38 @@ def test_classify_end_select_with_th_reject_and_remaining_is_rejected():
     assert classify_end(state, [], ["A"]) == "rejected"
 
 
+def test_classify_end_finish_with_failures():
+    # WP-SIM-10: FINISH でも合格でなければ finished_with_failures で終える
+    # （時間切れまで待たない）。合格なら finished_waiting。
+    state = {"phase": "FINISH", "halt_reason": "", "gate_reason": ""}
+    ok = [{"panel_id": "A", "result": "DONE", "reason": ""},
+          {"panel_id": "B", "result": "SKIPPED", "reason": "no_mechanism"}]
+    assert classify_end(state, ok, ["A", "B"]) == "finished_waiting"
+    bad = [{"panel_id": "A", "result": "DONE", "reason": ""},
+           {"panel_id": "B", "result": "SKIPPED", "reason": "top_not_found"}]
+    assert classify_end(state, bad, ["A", "B"]) == "finished_with_failures"
+    # 結果がまだ届いていない盤は、FINISH でも running（結果の受け取りは
+    # AutoState より遅れる場合がある。実測 2026-11-25）。
+    assert classify_end(state, bad[:1], ["A", "B"]) == "running"
+    assert classify_end(state, [], ["A"]) == "running"
+    # halt があれば halted が優先する（FINISH でも）。
+    halted = {"phase": "FINISH", "halt_reason": "ss_failed", "gate_reason": ""}
+    assert classify_end(halted, bad, ["A", "B"]) == "halted"
+
+
+def test_format_failures_lists_skipped_with_reason():
+    from check import format_failures
+    results = [{"panel_id": "A", "result": "DONE", "reason": ""},
+               {"panel_id": "B", "result": "SKIPPED", "reason": "top_not_found"},
+               {"panel_id": "C", "result": "SKIPPED", "reason": "no_mechanism"},
+               {"panel_id": "D", "result": "SKIPPED", "reason": "no_path"}]
+    lines = format_failures(results, ["A", "B", "C", "D", "E"])
+    assert lines == ["B: SKIPPED/top_not_found", "C: SKIPPED/no_mechanism",
+                     "D: SKIPPED/no_path", "E: 結果なし"]
+    # 選ばなかった盤の結果は出さない。
+    assert format_failures(results, ["B"]) == ["B: SKIPPED/top_not_found"]
+
+
 def test_classify_end_select_th_reject_does_not_preempt_finished_or_running():
     # 全盤が済んで指示待ちなら、残った th_reject_reason より finished を優先。
     state = {"phase": "SELECT", "halt_reason": "", "gate_reason": "",
