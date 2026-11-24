@@ -8,6 +8,7 @@
 # 起きるもの:
 #   - compose の sim_th（th の Gazebo。像 fk-sim-stack/th:latest）
 #   - compose の sim_hve（hve の偽物と描画サービス。像 fk-sim:latest）
+#   - compose の sim_fk（本システム auto_runner。像 fk_ws-fk_robot:latest）
 #   - ss（ss-system の scripts/ss.sh start。コンテナ名 ss-system）
 # 止めるのは `sim_down.sh`（自分が起こしたものだけ）。
 #
@@ -95,12 +96,12 @@ if [ -n "$(docker ps -q --filter 'name=^ss-system$' 2>/dev/null)" ]; then
   exit 1
 fi
 
-# --- 4. compose で sim_th・sim_hve を起こす -------------------------------------
+# --- 4. compose で sim_th・sim_hve・sim_fk を起こす -------------------------------------
 export WORLD_SRC="$OUT_DIR/world.world"
 export SCENE_DIR_SRC="$OUT_DIR"
-export FK_REPO HVE_REPO SS_REPO
+export FK_REPO FK_WS HVE_REPO SS_REPO
 
-echo "== compose で sim_th・sim_hve を起こす =="
+echo "== compose で sim_th・sim_hve・sim_fk を起こす =="
 echo "注意: th の像（fk-sim-stack/th:latest）のビルドは時間がかかります（初回）"
 docker compose -p fk-sim-stack -f "$SIM_DIR/docker-compose.yml" up -d
 
@@ -158,6 +159,7 @@ OUT_DIR=$OUT_DIR
 SS_REPO=$SS_REPO
 FK_REPO=$FK_REPO
 HVE_REPO=$HVE_REPO
+FK_WS=$FK_WS
 SCENE_DIR=$SCENE_DIR_SRC
 SCENE_DIR_SRC=$SCENE_DIR_SRC
 WORLD_SRC=$WORLD_SRC

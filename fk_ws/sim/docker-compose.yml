@@ -1,7 +1,8 @@
 # シミュレーション一式（WP-SIM-04。DetailedDesign-sim.md §6・§7 の段 2）。
 # `sim_up.sh` が起動し（compose の project 名は fk-sim-stack）、`sim_down.sh` が止める。
 #
-# 起こせるのは sim_th（th の Gazebo）・sim_hve（hve の偽物と描画サービス）だけ。
+# 起こせるのは sim_th（th の Gazebo）・sim_hve（hve の偽物と描画サービス）・
+# sim_fk（本システム auto_runner。段 3 から）。
 # ss は ss-system の `scripts/ss.sh start` で起こす（コンテナ名 ss-system）。
 #
 # すべて `network_mode: host`・ROS_DOMAIN_ID=78・FastDDS は UDP だけ。
@@ -14,6 +15,7 @@
 #   FK_REPO        fk-system リポジトリ（絶対パス。/work に読み取り専用でマウント）
 #   HVE_REPO       hve-system リポジトリ（絶対パス。/hve に読み取り専用でマウント）
 #   SS_REPO        ss-system リポジトリ（絶対パス。/ss に読み取り専用でマウント）
+#   FK_WS          fk_ws ディレクトリ（絶対パス。sim_fk が /root/fk_ws にマウント）
 
 name: fk-sim-stack
 
@@ -93,3 +95,65 @@ services:
         target: /sim/scene
         read_only: true
     command: [bash, /work/fk_ws/sim/hve_up.sh]
+
+  sim_fk:
+    # 本システム（`fk_robot` の像。`fk_ws` の `docker compose build` でできる像）。
+    # `auto_runner` を `fk.launch.py` で起こす。パラメータは §7.1 のとおり
+    # （`lift_host: 127.0.0.1`・`lift_port: 18080`・`mechanism_bypass: true`）。
+    # `fk.launch.py` はパラメータを `params.yaml` からしか読まないため、起動時に
+    # インストール先の `params.yaml`（コンテナ内。ホストの物は変えない）へ上書きする。
+    image: fk_ws-fk_robot:latest
+    container_name: sim_fk
+    network_mode: host
+    environment:
+      ROS_DOMAIN_ID: "78"
+      # UDP だけにするプロファイル（sim_hve と同じ。th のファイルは th_src から読む）。
+      FASTRTPS_DEFAULT_PROFILES_FILE: /work/fk_ws/sim/th_src/scripts/vibe_measure/fastdds_udp.xml
+    volumes:
+      - type: bind
+        source: ${FK_REPO:?}
+        target: /work
+        read_only: true
+      # `fk_ws` の compose（fk_robot）と同じマウント。build・install はコンテナ内に置く
+      # （ホストに root 所有のものを作らない）。th_import・ss_import は
+      # `fk_ws/scripts/import_th.sh`・`import_ss.sh` で先に取り込むこと。
+      - type: bind
+        source: ${FK_WS:?}/src
+        target: /root/fk_ws/src
+        read_only: true
+      - type: bind
+        source: ${FK_WS:?}/scripts
+        target: /root/fk_ws/scripts
+        read_only: true
+      - type: bind
+        source: ${FK_WS:?}/th_import
+        target: /root/fk_ws/th_import
+        read_only: true
+      - type: bind
+        source: ${FK_WS:?}/ss_import
+        target: /root/fk_ws/ss_import
+        read_only: true
+      - type: bind
+        source: ${FK_WS:?}/th_ref
+        target: /root/fk_ws/th_ref
+        read_only: true
+      - type: bind
+        source: ${FK_WS:?}/ss_ref
+        target: /root/fk_ws/ss_ref
+        read_only: true
+    command:
+      - bash
+      - -c
+      - |
+        set -e
+        set +u
+        source /opt/ros/humble/setup.bash
+        cd /root/fk_ws
+        colcon build
+        source install/setup.bash
+        set -u
+        PARAMS="$$(python3 -c "from ament_index_python.packages import get_package_share_directory; print(get_package_share_directory('fk_bringup'))")/config/params.yaml"
+        sed -i -e 's/^    lift_host:.*/    lift_host: "127.0.0.1"/' \
+               -e 's/^    lift_port:.*/    lift_port: 18080/' \
+               -e 's/^    mechanism_bypass:.*/    mechanism_bypass: true/' "$$PARAMS"
+        exec ros2 launch fk_bringup fk.launch.py
