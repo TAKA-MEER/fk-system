@@ -57,8 +57,8 @@ obstacles:
     size: [1.6, 0.5, 2.2]
     yaw: 0.0
     label: "shelf"
-robot:
-  pose: [6.0, 2.5, 1.5708]
+  # 機体の置き場は FK-E1 の試作では書かれていた（シーンの記述に無いときは
+  # 生成器が選ぶ。DetailedDesign-sim.md §3.1、WP-SIM-06）。
 lights:
   - type: point
     position: [6.0, 4.0, 3.9]

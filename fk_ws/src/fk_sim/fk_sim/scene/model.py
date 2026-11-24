@@ -25,7 +25,7 @@
       - center: [x, y]
         size: [sx, sy, sz]
         yaw: 0.0                   # 省略時は 0
-    robot:
+    robot:                         # 省略可。無ければ生成器が選ぶ（start_pose）
       pose: [x, y, yaw]            # 機体の置き場
     lights:                        # 照明（描画サービスの既定の強さに使う）
       - type: point                # point | sun | ambient
@@ -196,11 +196,14 @@ def validate_scene(raw, where="記述"):
         obstacles.append(ob)
     scene["obstacles"] = obstacles
 
-    robot_raw = _req(raw, "robot", where)
-    pose = _req(robot_raw, "pose", "robot")
-    if not (isinstance(pose, (list, tuple)) and len(pose) == 3 and all(_is_num(v) for v in pose)):
-        raise SceneError("robot.pose は [x, y, yaw] の数 3 つでなければいけません")
-    scene["robot"] = {"pose": [float(v) for v in pose]}
+    if "robot" not in raw or raw["robot"] is None:
+        scene["robot"] = None  # 書くのは build_scene の置き場の決定で埋める
+    else:
+        robot_raw = raw["robot"]
+        pose = _req(robot_raw, "pose", "robot")
+        if not (isinstance(pose, (list, tuple)) and len(pose) == 3 and all(_is_num(v) for v in pose)):
+            raise SceneError("robot.pose は [x, y, yaw] の数 3 つでなければいけません")
+        scene["robot"] = {"pose": [float(v) for v in pose]}
 
     lights_raw = _req(raw, "lights", where)
     if not isinstance(lights_raw, list):
@@ -320,8 +323,9 @@ def _check_geometry(scene):
     for ob in scene["obstacles"]:
         for pt in obstacle_corners_xy(ob):
             _inside_room(pt, room, f"障害物 '{ob['label']}'")
-    rx, ry = scene["robot"]["pose"][0], scene["robot"]["pose"][1]
-    _inside_room((rx, ry), room, "機体")
+    if scene.get("robot") is not None:
+        rx, ry = scene["robot"]["pose"][0], scene["robot"]["pose"][1]
+        _inside_room((rx, ry), room, "機体")
     panels = scene["panels"]
     for i in range(len(panels)):
         for j in range(i + 1, len(panels)):

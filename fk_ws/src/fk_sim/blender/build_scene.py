@@ -38,6 +38,11 @@ def parse_args():
     return p.parse_args(argv)
 
 
+def _robot_from_answer(out_dir):
+    with open(os.path.join(out_dir, "scene.json"), encoding="utf-8") as f:
+        return json.load(f)["robot"]
+
+
 def load_description(scene_path, out_dir):
     """yaml があれば YAML、無ければ生成器の scene.json から描く用の情報を作る。"""
     try:
@@ -50,7 +55,8 @@ def load_description(scene_path, out_dir):
                         "front_yaw": p["front_yaw"], "width": p["width"], "depth": p["depth"],
                         "height": p.get("height", 2.35), "label": p.get("label", ""),
                         "lugs": p.get("lugs", "four")} for i, p in enumerate(raw["panels"])],
-            "obstacles": raw.get("obstacles", []), "robot": raw["robot"],
+            "obstacles": raw.get("obstacles", []),
+            "robot": raw.get("robot") or _robot_from_answer(out_dir),
         }
     except ImportError:
         with open(os.path.join(out_dir, "scene.json"), encoding="utf-8") as f:

@@ -15,7 +15,7 @@ import subprocess
 import sys
 import time
 
-from . import answers, guard, model, world
+from . import answers, guard, model, start_pose, world
 
 WORLD_NAME = "world.world"
 ANSWER_NAME = "scene.json"
@@ -70,12 +70,38 @@ def run_blender(blender_exe, script, scene_path, out_dir):
     return elapsed
 
 
-def build_scene(scene_path, out_dir=None, blender_exe=None):
+def _default_ss_repo(start=None):
+    """ss のリポジトリ。$SS_REPO があればそれ、無ければ作業ツリーの隣（sim_up.sh の既定）。"""
+    repo = os.environ.get("SS_REPO")
+    if repo:
+        return repo
+    top = guard.repo_toplevel(os.path.dirname(start)) if start else guard.repo_toplevel()
+    top = top or os.path.realpath(os.path.dirname(start) if start else os.getcwd())
+    return os.path.join(os.path.dirname(top), "ss-system")
+
+
+def _default_nav2_params(start=None):
+    """th の nav2_params_sim.yaml の取り出し物（import_th_sim.sh の出力）。"""
+    override = os.environ.get("FK_SIM_NAV2_PARAMS")
+    if override:
+        return override
+    top = guard.repo_toplevel(os.path.dirname(start)) if start else guard.repo_toplevel()
+    top = top or os.path.realpath(os.path.dirname(start) if start else os.getcwd())
+    return os.path.join(top, "fk_ws", "sim", "th_src", "src", "th_bringup",
+                        "config", "nav2_params_sim.yaml")
+
+
+def build_scene(scene_path, out_dir=None, blender_exe=None, ss_repo=None, nav2_params=None):
     """記述から生成する。戻り値: (出力先, blender の経過秒 or None)。"""
     t_start = time.monotonic()
     scene = model.load_scene(scene_path)
     out = out_dir or default_out_dir(scene)
     out = guard.check_output(scene, out)  # 何も書く前に止める
+    # 機体の置き場（DetailedDesign-sim.md §3.1）。設定は必ず読む（読めなければ止める）。
+    scene["robot"] = start_pose.resolve_robot(
+        scene,
+        ss_repo or _default_ss_repo(scene_path),
+        nav2_params or _default_nav2_params(scene_path))
     os.makedirs(out, exist_ok=True)
     with open(os.path.join(out, WORLD_NAME), "w", encoding="utf-8", newline="\n") as f:
         f.write(world.build_world(scene))
@@ -83,7 +109,11 @@ def build_scene(scene_path, out_dir=None, blender_exe=None):
     with open(os.path.join(out, ANSWER_NAME), "w", encoding="utf-8", newline="\n") as f:
         json.dump(answer, f, ensure_ascii=False, indent=1)
         f.write("\n")
+    robot = scene["robot"]
     print(f"[scene] 名前={scene['name']} visibility={scene['visibility']} → {out}")
+    print(f"[scene] robot pose ({robot['pose_source']}): {robot['pose']}")
+    print(f"[scene] visible_panels: {robot['visible_panels']}")
+    print(f"[scene] hidden_panels: {robot['hidden_panels']}")
     print(f"[scene] {WORLD_NAME}・{ANSWER_NAME} を書きました")
     exe = blender_exe if blender_exe is not None else os.environ.get("BLENDER")
     if not exe:

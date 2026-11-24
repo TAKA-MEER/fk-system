@@ -60,3 +60,37 @@ def test_format_table():
     results = [{"panel_id": "L1", "result": "DONE", "reason": ""}]
     lines = format_table(rows, results)
     assert len(lines) == 1 and "P004" in lines[0] and "DONE" in lines[0]
+
+
+# --- WP-SIM-06: 正解を visible_panels に絞る・欠けを表に出す ---
+
+SCENE = {"robot": {"pose": [5.0, 4.0, 0.0],
+                   "visible_panels": ["P001", "P002"],
+                   "hidden_panels": [{"id": "P003", "reason": "far"}]},
+         "panels": TRUTHS + [{"id": "P005", "center": [9.0, 9.0]}]}
+
+
+def test_expected_visible_filters_by_visible_panels():
+    from check import expected_visible
+    assert expected_visible(SCENE) == ["P001", "P002"]
+    # 古い scene.json（robot.visible_panels が無い）は全部を期待なす。
+    old = {"panels": TRUTHS}
+    assert expected_visible(old) == ["P001", "P002", "P003", "P004"]
+
+
+def test_missing_visible_lists_expected_panels_absent_from_layout():
+    from check import format_missing, missing_visible
+    layout = [{"panel_id": "L1", "x": 5.09, "y": 7.52}]  # P001 だけ
+    rows = missing_visible(layout, SCENE)
+    assert [r["truth_id"] for r in rows] == ["P002"]
+    # 距離は置き場（5, 4）から中心（5.9, 7.52）までの水平距離（独立計算）。
+    assert abs(rows[0]["distance_m"] - 3.633) < 0.01
+    assert format_missing(rows) == ["欠け P002: 置き場から 3.633 m"]
+
+
+def test_missing_visible_empty_when_all_expected_present():
+    from check import missing_visible
+    layout = [{"panel_id": "L1", "x": 5.09, "y": 7.52},
+              {"panel_id": "L2", "x": 5.91, "y": 7.52},
+              {"panel_id": "L3", "x": 6.79, "y": 7.52}]
+    assert missing_visible(layout, SCENE) == []

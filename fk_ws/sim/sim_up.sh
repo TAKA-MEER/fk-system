@@ -45,13 +45,20 @@ if command -v python3 >/dev/null 2>&1; then PYTHON_BIN=python3; else PYTHON_BIN=
 TH_REPO="${TH_REPO:-$FK_REPO/../th-system}"
 SS_REPO="${SS_REPO:-$FK_REPO/../ss-system}"
 HVE_REPO="${HVE_REPO:-$FK_REPO/../hve-system}"
+export TH_REPO SS_REPO HVE_REPO  # 生成器も読む（ss の locator・th の nav2。WP-SIM-06）
 
 if [ ! -f "$SCENE_YAML" ]; then
   echo "ERROR: シーンがありません: $SCENE_YAML" >&2
   exit 1
 fi
 
-# --- 1. シーンの生成（world.world・scene.glb・scene.json） ----------------------
+# --- 1. th の取り出し（th_repo のコミットから。静的ファイル） --------------------
+# 生成器が th の nav2_params_sim.yaml（th_src、import_th_sim.sh の出力）を読むので、
+# シーン生成より先に取り出しておく（WP-SIM-06、DetailedDesign-sim.md §3.1）。
+echo "== th の取り出し（$TH_REPO）=="
+TH_REPO="$TH_REPO" bash "$SIM_DIR/import_th_sim.sh"
+
+# --- 2. シーンの生成（world.world・scene.glb・scene.json） ----------------------
 OUT_DIR="$FK_REPO/sim_out/scenes/$SCENE_NAME"
 echo "== scene 生成（$SCENE_NAME）=="
 BLENDER="${BLENDER:-}"
@@ -78,16 +85,13 @@ import json, os, sys
 scene_dir, fk_repo = sys.argv[1], sys.argv[2]
 scene_file = os.path.join(scene_dir, "scene.json").replace("\\", "/")
 pose = json.load(open(scene_file, encoding="utf-8"))["robot"]["pose"]
+os.makedirs(os.path.join(fk_repo, ".briefs/tmp"), exist_ok=True)
 open(os.path.join(fk_repo, ".briefs/tmp/robot_pose.env"), "w", encoding="utf-8").write("ROBOT_X=" + str(pose[0]) + "\nROBOT_Y=" + str(pose[1]) + "\nROBOT_YAW=" + str(pose[2]) + "\n")
 print("robot pose (scene.json):", pose)
 PY
 # shellcheck disable=SC1091
 . "$FK_REPO/.briefs/tmp/robot_pose.env"
 export ROBOT_X ROBOT_Y ROBOT_YAW
-
-# --- 2. th の取り出し（th_repo のコミットから。静的ファイル） --------------------
-echo "== th の取り出し（$TH_REPO）=="
-TH_REPO="$TH_REPO" bash "$SIM_DIR/import_th_sim.sh"
 
 # --- 3. ss のコンテナが既存なら、その場で止めて報告する（止めない） -------------
 if [ -n "$(docker ps -q --filter 'name=^ss-system$' 2>/dev/null)" ]; then
