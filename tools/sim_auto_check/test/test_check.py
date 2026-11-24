@@ -76,8 +76,10 @@ def test_classify_end_finish_with_failures():
     bad = [{"panel_id": "A", "result": "DONE", "reason": ""},
            {"panel_id": "B", "result": "SKIPPED", "reason": "top_not_found"}]
     assert classify_end(state, bad, ["A", "B"]) == "finished_with_failures"
-    # 結果が無い盤が残っていても finished_with_failures。
-    assert classify_end(state, bad[:1], ["A", "B"]) == "finished_with_failures"
+    # 結果がまだ届いていない盤は、FINISH でも running（結果の受け取りは
+    # AutoState より遅れる場合がある。実測 2026-11-25）。
+    assert classify_end(state, bad[:1], ["A", "B"]) == "running"
+    assert classify_end(state, [], ["A"]) == "running"
     # halt があれば halted が優先する（FINISH でも）。
     halted = {"phase": "FINISH", "halt_reason": "ss_failed", "gate_reason": ""}
     assert classify_end(halted, bad, ["A", "B"]) == "halted"

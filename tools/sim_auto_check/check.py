@@ -120,7 +120,9 @@ def classify_end(state, results, selected_ids):
     本システムが `FINISH`（選んだ盤を回り終えた）になったら、合否を
     かかわらず時間切れを待たずに終える。合格でなければ
     `finished_with_failures`（WP-SIM-10）。飛ばした盤と理由は
-    `format_failures` で表に出す。
+    `format_failures` で表に出す。ただし結果の受け取りは `AutoState`
+    より遅れる場合があるため（実測 2026-11-25）、選んだ盤の結果が
+    全部届くまでは `running` のままで待つ。
 
     `rejected` には、選んだ盤がまだ残っているのに本システムが `SELECT`
     に戻り、`th_reject_reason`（例: th が発進を拒否した理由）が残っている
@@ -133,8 +135,12 @@ def classify_end(state, results, selected_ids):
     if halt:
         return "halted"
     if phase == "FINISH":
-        return "finished_waiting" if is_pass(results, selected_ids) \
-            else "finished_with_failures"
+        if is_pass(results, selected_ids):
+            return "finished_waiting"
+        seen = {r["panel_id"] for r in results}
+        if any(pid not in seen for pid in selected_ids):
+            return "running"  # 結果がまだ届いていない（FINISH の直後）
+        return "finished_with_failures"
     if is_pass(results, selected_ids) and phase in ("SELECT", "FINISH"):
         return "finished_waiting"
     if (state or {}).get("th_reject_reason") and phase == "SELECT" \
