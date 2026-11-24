@@ -84,13 +84,14 @@ docker exec sim_fk bash -c 'source /opt/ros/humble/setup.bash && source /root/fk
 ```
 
 次に道具を回す。`sim_fk` の像の中で回す（ROS 2 と型があるので）。
-出力は `sim_out/`（`sim_fk` へ bind mount 済み）に書かれるので、
-ホストに root 所有のファイルを作らないよう `docker exec -u` で
-ホストのユーザーとして回す:
+出力は `sim_out/`（`sim_fk` へ bind mount 済み）に書かれる。道具は
+root のまま回し（`docker exec -u` でホストのユーザーにすると、像の
+`HOME` が `/` になって `rclpy.init()` が落ち、`/root` が読めず型も
+読めない）、終わったあとに同じ exec の中で出力先をホストのユーザーへ
+`chown` する（道具が失敗しても `trap` で chown される）:
 
 ```bash
-docker exec -u $(id -u):$(id -g) sim_fk python3 /work/tools/sim_auto_check/run.py \
-  --scene /work/sim_out/scenes/public_room
+docker exec sim_fk bash -c 'set +u; source /opt/ros/humble/setup.bash; source /root/fk_ws/install/setup.bash; export ROS_DOMAIN_ID=78; trap "chown -R '"$(id -u):$(id -g)"' /root/fk_ws/sim_out/auto_check" EXIT; python3 /work/tools/sim_auto_check/run.py --scene /work/sim_out/scenes/public_room'
 ```
 
 手順・出力の既定は `tools/sim_auto_check/README.md`。

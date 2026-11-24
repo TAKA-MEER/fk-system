@@ -6,12 +6,13 @@ DetailedDesign-sim.md §7.1 の道具の行。
 ## 回し方
 
 `sim_fk` の像の中で回す（ROS 2 と型があるので）。出力は `sim_out/`
-（`sim_fk` へ bind mount 済み）に書かれるので、ホストに root 所有の
-ファイルを作らないよう、ホストのユーザーとして回す:
+（`sim_fk` へ bind mount 済み）に書かれる。道具は root のまま回し、
+終わったあとに同じ exec の中で出力先をホストのユーザーへ `chown`
+する（`docker exec -u` は像の `HOME` が `/` になり `/root` も読めない
+ので使わない。道具が失敗しても `trap` で chown される）:
 
 ```bash
-docker exec -u $(id -u):$(id -g) sim_fk python3 /work/tools/sim_auto_check/run.py \
-  --scene /work/sim_out/scenes/public_room
+docker exec sim_fk bash -c 'set +u; source /opt/ros/humble/setup.bash; source /root/fk_ws/install/setup.bash; export ROS_DOMAIN_ID=78; trap "chown -R '"$(id -u):$(id -g)"' /root/fk_ws/sim_out/auto_check" EXIT; python3 /work/tools/sim_auto_check/run.py --scene /work/sim_out/scenes/public_room'
 ```
 
 th を `IDLE` に入れる手順（`dev_mode` の疎通の無視。なぜ要るか）は
