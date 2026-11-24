@@ -523,3 +523,75 @@ def test_hve_fake_revision():
         with open(FAKE_PATH, encoding="utf-8") as f:
             src = f.read()
         assert "下端スイッチの真似" in src, "偽物が下端を自分で立てない版かも"
+
+
+def test_state_stops_mid_connection_reconnects():
+    """state を受けたあとソケットは開いたまま state が止まると（半死の接続）、
+    lift_state_stale_ms を過ぎたら繋ぎ直すこと。"""
+    state = _server_frame(json.dumps(_state()))
+    first = [True]
+
+    def on_conn(conn, _srv):
+        if first[0]:
+            first[0] = False
+            for _ in range(3):
+                conn.sendall(state)
+                time.sleep(0.1)
+        # あとは閉じずに送るのをやめる（FIN は来ない）
+        conn.settimeout(10)
+        while True:
+            if not conn.recv(4096):
+                return
+
+    srv = _RawLiftServer(on_conn)
+    port = WsLiftPort(host="127.0.0.1", port=srv.port, cmd_period_ms=50,
+                      state_stale_ms=500, lower_speed_mmps=100)
+    try:
+        assert _wait_until(lambda: port.status() is not None, timeout_s=5), \
+            "state を受けられない"
+        assert _wait_until(lambda: srv.hello_count() >= 2, timeout_s=8), \
+            "state が止まっても繋ぎ直さない"
+        assert _wait_until(lambda: port.status() is None, timeout_s=5), \
+            "state が止まっているのに status() が None にならない"
+    finally:
+        port.close()
+        srv.stop()
+
+
+@needs_fake
+def test_stop_during_lowering_releases_owner():
+    """下げている途中で stop() されたら、昇降部の 600 ms の途絶を待たずに
+    stop と release を送って持ち主を離すこと（下端の release は
+    test_lower_to_bottom_and_release が縛っている）。"""
+    srv = FakeLiftServer()
+    port = _make_port(srv.port)
+    reader = StateReader(srv.port)
+    try:
+        assert _wait_until(lambda: port.status() is not None)
+
+        def lowering():
+            port.lower()
+            st = port.status()
+            return st is not None and st.height_above_bottom_mm <= 600.0
+        assert _wait_until(lowering, timeout_s=10), "下がり始めない"
+        port.stop()
+        t0 = time.monotonic()
+
+        def released():
+            reader.pump()
+            return (reader.state is not None and reader.state.get("dir") == "stop"
+                    and reader.state.get("owner") is None)
+        assert _wait_until(released, timeout_s=5), "stop と release が届かない"
+        elapsed_ms = (time.monotonic() - t0) * 1000.0
+        # stop と release を送れば数周期（~200 ms）で終わる。送らなければ昇降部の
+        # 600 ms の途絶を待つので、450 ms で区切れる
+        assert elapsed_ms < 450.0, f"止めるのが遅すぎる: {elapsed_ms:.0f} ms"
+        # 高さはそこで止まる（下がり続けない）
+        height = port.status().height_above_bottom_mm
+        time.sleep(0.6)
+        st = port.status()
+        assert st is not None and st.height_above_bottom_mm == height
+    finally:
+        port.close()
+        reader.close()
+        srv.stop()
