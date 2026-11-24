@@ -9,7 +9,7 @@ RosThPort（th の口の ROS 2 の実装）と、Runner（fk_auto.runner。ROS �
 th への指示は Runner の送り口（Runner._emit）からだけ。このファイルのどこからも
 RosThPort.send を直接呼ばない。
 ss の口は、ros_ss=True のとき本物 (RosSsPort) を作る。渡されなければ None で、関門が何も通さない。
-昇降機の口は、コンストラクタで渡されたときだけ使う（本物はまだ無い。WP-AUTO-05）。
+昇降機の口は、ros_lift=True のとき本物 (WsLiftPort) を作る。渡されなければ None で、関門が何も通さない。
 """
 import dataclasses
 import math
@@ -26,6 +26,7 @@ from fk_auto import core
 from fk_auto.ports import NoMechanism, ThPort, ThReply, ThResult
 from fk_auto.ros_ss import RosSsPort
 from fk_auto.runner import Runner, _startup_prefix
+from fk_auto.ws_lift import WsLiftPort
 from fk_msgs.msg import AutoState, Layout, Panel, PanelResult, PanelResults
 from fk_msgs.srv import AutoCommand
 from th_system_msgs.msg import MeasureHeartbeat, MeasureResult, MeasureStatus
@@ -50,7 +51,7 @@ _DYN = ParameterDescriptor(dynamic_typing=True)
 _NODE_PARAMS = {
     'heartbeat_period_ms': 200, 'runner_stall_ms': 500, 'runner_period_ms': 100,
     'state_period_ms': 500, 'lift_cmd_period_ms': 100, 'lift_host': 'hve-lift.local',
-    'no_lower_move_max_m': 0.0,
+    'lift_port': 80, 'lift_lower_speed_mmps': 100, 'no_lower_move_max_m': 0.0,
 }
 
 
@@ -137,10 +138,11 @@ class RosThPort(ThPort):
 
 
 class AutoRunner(Node):
-    def __init__(self, lift=None, ss=None, arm=None, pre_step=(), ros_ss=False, **kwargs):
+    def __init__(self, lift=None, ss=None, arm=None, pre_step=(), ros_ss=False, ros_lift=False, **kwargs):
         """lift・ss: 昇降機・ss の口（渡されなければ None）。pre_step: step の前に now_ms を渡して
         呼ぶ関数（試験で偽の口の時刻を進める）。ros_ss=True なら本物の ss の口 (RosSsPort) を
         作る（ss= が渡されたときはそちらが勝つ。既存の試験は ss=FakeSs(...) のまま使える）。
+        ros_lift=True なら本物の昇降機の口 (WsLiftPort) を作る（lift= が渡されたときはそちらが勝つ）。
         kwargs: parameter_overrides など。"""
         super().__init__('auto_runner', **kwargs)
         defaults = core.Params()
@@ -161,6 +163,15 @@ class AutoRunner(Node):
         self._th = RosThPort(self)
         if ros_ss and ss is None:
             ss = RosSsPort(self)
+        self._lift_port = None
+        if ros_lift and lift is None:
+            lift = WsLiftPort(
+                host=str(self.get_parameter('lift_host').value),
+                port=int(self.get_parameter('lift_port').value),
+                cmd_period_ms=self.get_parameter('lift_cmd_period_ms').value,
+                state_stale_ms=self.get_parameter('lift_state_stale_ms').value,
+                lower_speed_mmps=int(self.get_parameter('lift_lower_speed_mmps').value))
+            self._lift_port = lift
         self._cp = self._params()
         # WAIVER(demo): W-1 起動時にバイパスの値をログに出す（DetailedDesign-auto.md §2.3）。
         self.get_logger().info(f"mechanism_bypass={self._cp.mechanism_bypass}")
@@ -304,12 +315,14 @@ class AutoRunner(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    node = AutoRunner(ros_ss=True)   # 本番の起動は本物の ss の口を使う
+    node = AutoRunner(ros_ss=True, ros_lift=True)   # 本番の起動は本物の ss・昇降機の口を使う
     try:
         rclpy.spin(node)   # シングルスレッドの実行器
     except KeyboardInterrupt:
         pass
     finally:
+        if node._lift_port is not None:
+            node._lift_port.close()   # 受信スレッドを止める（auto_runner を止めたら止まる）
         node.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()
