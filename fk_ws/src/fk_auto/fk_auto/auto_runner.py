@@ -162,6 +162,8 @@ class AutoRunner(Node):
         if ros_ss and ss is None:
             ss = RosSsPort(self)
         self._cp = self._params()
+        # WAIVER(demo): W-1 起動時にバイパスの値をログに出す（DetailedDesign-auto.md §2.3）。
+        self.get_logger().info(f"mechanism_bypass={self._cp.mechanism_bypass}")
         self.runner = Runner(self._th, lift, ss, arm if arm is not None else NoMechanism(self._cp),
                              self._cp)
 
@@ -185,7 +187,14 @@ class AutoRunner(Node):
             if f.name == 'th_interface_version':
                 continue
             v = self.get_parameter(f.name).value
-            kw[f.name] = int(v) if isinstance(getattr(d, f.name), int) else float(v)
+            default = getattr(d, f.name)
+            # bool は int の subclass なので先に見る（int/float の変換に通すと bool が消える）
+            if isinstance(default, bool):
+                kw[f.name] = bool(v)
+            elif isinstance(default, int):
+                kw[f.name] = int(v)
+            else:
+                kw[f.name] = float(v)
         return core.Params(**kw)
 
     # --- 試験用: 状態機械だけを止める／戻す（実行器は動いたまま） ---
@@ -243,6 +252,7 @@ class AutoRunner(Node):
         m.gate_reason = v.gate_reason or self._th_gate_reason()
         m.lift_at_bottom, m.lift_readable = v.lift_at_bottom, v.lift_readable
         m.arm_stowed, m.mechanism_attached = v.arm_stowed, v.mechanism_attached
+        m.mechanism_bypass = v.mechanism_bypass
         m.reentry_required = v.reentry_required
         m.th_mode, m.th_state, m.th_reject_reason = v.th_mode, v.th_state, v.th_reject_reason
         return m
@@ -251,7 +261,7 @@ class AutoRunner(Node):
     def _state_key(m):
         return (m.phase, m.panel_id, tuple(m.queue), m.side, tuple(m.queue_side), m.halt_reason, m.gate_reason,
                 m.lift_at_bottom, m.lift_readable, m.arm_stowed, m.mechanism_attached,
-                m.reentry_required, m.th_mode, m.th_state, m.th_reject_reason)
+                m.mechanism_bypass, m.reentry_required, m.th_mode, m.th_state, m.th_reject_reason)
 
     def _publish_state(self):
         m = self._build_state()

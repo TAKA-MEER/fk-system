@@ -49,6 +49,7 @@ class AutoStateView:
     lift_readable: bool = False
     arm_stowed: bool = False
     mechanism_attached: bool = False
+    mechanism_bypass: bool = True   # 本システムの設定（DetailedDesign-auto.md §2.3）
     reentry_required: bool = False
     th_mode: str = ""
     th_state: str = ""
@@ -209,7 +210,7 @@ class Runner:
             halt_reason=self._halt_reason, gate_reason=self._gate_reason,
             lift_at_bottom=bool(lift and lift.at_bottom), lift_readable=self._height_readable(s),
             arm_stowed=bool(lift and lift.arm_stowed), mechanism_attached=bool(
-                lift and lift.mechanism_attached),
+                lift and lift.mechanism_attached), mechanism_bypass=bool(self.p.mechanism_bypass),
             reentry_required=bool(th and th.reentry_required),
             th_mode=(th.mode or "") if th else "", th_state=(th.state or "") if th else "",
             th_reject_reason=self._th_reject_reason)
@@ -340,7 +341,7 @@ class Runner:
 
     def _c_finish(self, arm_confirmed=False, **_):
         snap = self._snap
-        absent = core._mechanism_absent(snap)
+        absent = core._mechanism_absent(snap, self.p)
         stowed = core._arm_readable(snap, self.p) and bool(snap.lift.arm_stowed)
         if not absent and not stowed and not arm_confirmed:
             return self._no("arm_not_confirmed")
@@ -974,7 +975,7 @@ class Runner:
 
     def _do_at_panel(self, snap):
         if not self._work_started:
-            if core._mechanism_absent(snap) or self._emit("arm.start", snap, panel_id=self._cur,
+            if core._mechanism_absent(snap, self.p) or self._emit("arm.start", snap, panel_id=self._cur,
                                                            side=self._cur_side or "front") is None:
                 self._maybe_queue_back()       # 正面側の AT_PANEL が終わった（測定機構なしの道）
                 self._skip(SkipEvent.MECHANISM_ABSENT)   # 測定機構なしの道（設計書 §2.3）

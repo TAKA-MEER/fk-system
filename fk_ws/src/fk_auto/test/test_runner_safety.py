@@ -206,7 +206,7 @@ def test_gate_blocks_lowering_when_arm_out_or_ss_busy_or_arm_link_lost():
     for kw, reason in ((dict(arm_stowed=False), "arm_not_stowed"),
                        (dict(arm_link_ok=False), "arm_link_lost")):
         w = World([WPanel(3.0, 0.0)], mechanism=True, arm=FakeArm(), params=Params(
-            lift_lower_timeout_s=1000))
+            lift_lower_timeout_s=1000, mechanism_bypass=False))
         w.to_select()
         w.lift.height_mm = 300
         for k, v in kw.items():
@@ -247,7 +247,7 @@ def test_lowering_stops_from_the_next_step_when_ss_leaves_idle_midway():
 
 def test_lowering_stops_when_arm_controller_link_drops_midway():
     w = World([WPanel(3.0, 0.0)], mechanism=True, arm=FakeArm(),
-              params=Params(lift_lower_timeout_s=1000))
+              params=Params(lift_lower_timeout_s=1000, mechanism_bypass=False))
     w.to_select()
     w.lift.height_mm = 1000
     w.start()

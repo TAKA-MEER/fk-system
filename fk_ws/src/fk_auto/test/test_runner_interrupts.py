@@ -51,7 +51,8 @@ def test_pause_comm_loss_pauses_then_run_resumes():
 
 
 def test_pause_run_rejected_outside_paused_and_when_gate_fails():
-    w = World([WPanel(3.0, 0.0)])
+    # PAUSED からの再開は腕の条件を見る（バイパスでない）。attached の値によらない
+    w = World([WPanel(3.0, 0.0)], mechanism=True)
     to_nav(w)
     assert w.cmd("auto.run").reject_reason == "phase_not_accepting"   # PAUSED でない
     w.th.model.human_jog()

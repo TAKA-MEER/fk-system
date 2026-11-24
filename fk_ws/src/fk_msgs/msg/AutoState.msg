@@ -15,3 +15,4 @@ bool reentry_required
 string th_mode
 string th_state
 string th_reject_reason  # th が最後に指示を拒否した理由。th の理由キーのまま。無ければ空
+bool mechanism_bypass    # 本システムの設定（OPT: mechanism_bypass。DetailedDesign-auto.md §2.3）

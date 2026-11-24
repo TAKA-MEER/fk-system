@@ -47,7 +47,7 @@ class SsHarness:
         self.survey_depth = survey_depth
         self.recheck_depth = recheck_depth
         self.recheck_measured = recheck_measured
-        self.lift = FakeLift(mechanism_attached=False)
+        self.lift = FakeLift(mechanism_attached=True)   # 測定機構なしの道は mechanism_bypass で入る
         self.runner = AutoRunner(lift=self.lift, ros_ss=True, pre_step=[self.lift.advance],
                                  parameter_overrides=[Parameter(k, value=v)
                                                       for k, v in RUNNER_PARAMS.items()])
