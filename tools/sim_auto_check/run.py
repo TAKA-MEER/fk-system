@@ -33,7 +33,8 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from check import classify_end, count_results, format_table, match_layout_to_truth  # noqa: E402
+from check import (classify_end, count_results, expected_visible, format_missing,  # noqa: E402
+                   format_table, match_layout_to_truth, missing_visible)
 
 
 def main():
@@ -185,13 +186,19 @@ def main():
         # 7. 正解との対応を表で出す
         with open(os.path.join(args.scene, "scene.json"), encoding="utf-8") as f:
             scene = json.load(f)
-        rows = match_layout_to_truth(latest["layout"].get("panels", []),
-                                     scene["panels"])
+        layout_panels = latest["layout"].get("panels", [])
+        expected = expected_visible(scene)
+        truths = [p for p in scene["panels"] if p["id"] in expected]
+        rows = match_layout_to_truth(layout_panels, truths)
         lines = format_table(rows, results)
+        missing = missing_visible(layout_panels, scene)
+        lines += format_missing(missing)
         for line in lines:
             print(line)
+        record("missing_visible", {"missing": missing})
         summary = {"outcome": cls, "selected": selected,
                    "counts": count_results(results), "table": lines,
+                   "missing_visible": missing,
                    "th": latest["th"], "state": latest["state"]}
         with open(os.path.join(out_dir, "summary.json"), "w", encoding="utf-8") as f:
             json.dump(summary, f, ensure_ascii=False, indent=2)

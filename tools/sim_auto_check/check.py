@@ -44,6 +44,42 @@ def match_layout_to_truth(layout_panels, truth_panels):
     return rows
 
 
+def expected_visible(scene):
+    """置き場から見えるはずの盤（`scene.json` の `visible_panels`）。
+
+    `robot.visible_panels` が無い古い `scene.json` では全部を期待なす。
+    """
+    robot = (scene or {}).get("robot") or {}
+    ids = robot.get("visible_panels")
+    if ids is not None:
+        return list(ids)
+    return [p["id"] for p in (scene or {}).get("panels", [])]
+
+
+def missing_visible(layout_panels, scene):
+    """見えるはずなのに配置図に無い盤を返す。
+
+    戻り値は `[{truth_id, distance_m}]`。距離は置き場（`robot.pose`）から
+    正解の盤の中心までの水平距離。
+    """
+    expected = expected_visible(scene)
+    truths = (scene or {}).get("panels", [])
+    present = {row["truth_id"] for row in match_layout_to_truth(layout_panels, truths)}
+    pose = ((scene or {}).get("robot") or {}).get("pose") or [0.0, 0.0]
+    rows = []
+    for truth in truths:
+        if truth["id"] in expected and truth["id"] not in present:
+            dist = math.hypot(float(truth["center"][0]) - float(pose[0]),
+                              float(truth["center"][1]) - float(pose[1]))
+            rows.append({"truth_id": truth["id"], "distance_m": dist})
+    return rows
+
+
+def format_missing(rows):
+    """見えるはずなのに配置図に無い盤の表の行にする（文字列の列）。"""
+    return [f"欠け {row['truth_id']}: 置き場から {row['distance_m']:.3f} m" for row in rows]
+
+
 def count_results(results):
     """結果の数え方。`DONE` と `SKIPPED` は別に数える（混ぜない）。"""
     counts = {"DONE": 0, "SKIPPED": 0, "other": 0}
