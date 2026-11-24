@@ -14,7 +14,7 @@ import pytest
 import yaml
 
 from fk_sim import scene
-from fk_sim.scene import guard, model
+from fk_sim.scene import guard, model, start_pose
 from fk_sim.scene.answers import build_answer, compare_blender_objects
 from fk_sim.scene.world import build_world
 
@@ -189,11 +189,26 @@ def test_site_refused_deep_nonexistent_path(tmp_path):
     assert not os.path.exists(deep)
 
 
+def fake_configs(tmp_path):
+    """ss の locator.yaml と th の nav2 の代わり（数字だけ置いた最小のもの）。"""
+    ss_repo = os.path.join(str(tmp_path), "ss")
+    cfg = os.path.join(ss_repo, "ss_ws", "src", "ss_locator", "config")
+    os.makedirs(cfg)
+    with open(os.path.join(cfg, "locator.yaml"), "w", encoding="utf-8") as f:
+        yaml.safe_dump({"locator_node": {"ros__parameters": {
+            "max_distance_default_m": 5.0, "scan_camera_height_m": 3.1}}}, f)
+    nav2 = os.path.join(str(tmp_path), "nav2.yaml")
+    with open(nav2, "w", encoding="utf-8") as f:
+        yaml.safe_dump({"bt_navigator": {"ros__parameters": {"robot_radius": 0.36}}}, f)
+    return ss_repo, nav2
+
+
 def test_site_outside_repo_is_written(tmp_path):
     data = dict(base_scene(), visibility="site")
     path = write_scene(tmp_path, data)
+    ss_repo, nav2 = fake_configs(tmp_path)
     out = os.path.join(str(tmp_path), "outside")
-    a = scene.build_scene(path, out_dir=out)
+    a = scene.build_scene(path, out_dir=out, ss_repo=ss_repo, nav2_params=nav2)
     assert os.path.isfile(os.path.join(a[0], "world.world"))
     assert os.path.isfile(os.path.join(a[0], "scene.json"))
 
@@ -247,12 +262,16 @@ def test_bad_visibility_raises():
 
 def test_public_room_builds_without_blender(tmp_path, monkeypatch):
     monkeypatch.delenv("BLENDER", raising=False)
-    out, blender_time = scene.build_scene(PUBLIC_ROOM, out_dir=os.path.join(str(tmp_path), "o"))
+    ss_repo, nav2 = fake_configs(tmp_path)
+    out, blender_time = scene.build_scene(PUBLIC_ROOM, out_dir=os.path.join(str(tmp_path), "o"),
+                                          ss_repo=ss_repo, nav2_params=nav2)
     assert os.path.isfile(os.path.join(out, "world.world"))
     assert os.path.isfile(os.path.join(out, "scene.json"))
     assert blender_time is None  # BLENDER が無いホストでは .glb は作らない
     answer = json.load(open(os.path.join(out, "scene.json"), encoding="utf-8"))
     assert len(answer["panels"]) == 4
+    # public_room には robot が無い（WP-SIM-06）。生成器が選んで書く。
+    assert set(answer["robot"]) == {"pose", "pose_source", "visible_panels", "hidden_panels"}
 
 
 # --- Blender の外接箱と scene.json の比べ（compare_blender_objects） ---
@@ -288,8 +307,9 @@ def test_compare_blender_objects_ok_and_mismatch():
                     or not os.path.isfile(os.environ.get("BLENDER", "")),
                     reason="BLENDER が無いので .glb の比べは飛ばす")
 def test_blender_glb_matches_answer(tmp_path):
+    ss_repo, nav2 = fake_configs(tmp_path)
     out = os.path.join(str(tmp_path), "blender_out")
-    scene.build_scene(PUBLIC_ROOM, out_dir=out)
+    scene.build_scene(PUBLIC_ROOM, out_dir=out, ss_repo=ss_repo, nav2_params=nav2)
     assert os.path.isfile(os.path.join(out, "scene.glb"))
     with open(os.path.join(out, "scene.json"), encoding="utf-8") as f:
         answer = json.load(f)
@@ -310,8 +330,9 @@ def test_blender_lug_ring_faces_panel_center(tmp_path):
     の `ring_yaw = atan2(-y, -x)` と同じ決まり。90° ずらすとssは手前の列を
     手前へ広げてしまい、盤に組めなくなる（WP-SIM-04 の実測）。
     """
+    ss_repo, nav2 = fake_configs(tmp_path)
     out = os.path.join(str(tmp_path), "blender_out")
-    scene.build_scene(PUBLIC_ROOM, out_dir=out)
+    scene.build_scene(PUBLIC_ROOM, out_dir=out, ss_repo=ss_repo, nav2_params=nav2)
     with open(os.path.join(out, "scene.json"), encoding="utf-8") as f:
         answer = json.load(f)
     with open(os.path.join(out, "blender_objects.json"), encoding="utf-8") as f:
@@ -347,9 +368,153 @@ def test_cli_site_refused_from_outside_cwd(tmp_path):
 
 
 def test_cli_build_public_room(tmp_path):
+    ss_repo, nav2 = fake_configs(tmp_path)
     out = os.path.join(str(tmp_path), "cli_out")
     proc = subprocess.run(
         [sys.executable, "-m", "fk_sim.scene", "build", PUBLIC_ROOM, "--out", out],
-        capture_output=True, text=True, env={**os.environ, "PYTHONPATH": ROOT + os.pathsep + os.environ.get("PYTHONPATH", "")})
+        capture_output=True, text=True, env={**os.environ, "PYTHONPATH": ROOT + os.pathsep + os.environ.get("PYTHONPATH", ""),
+                                            "SS_REPO": ss_repo, "FK_SIM_NAV2_PARAMS": nav2})
     assert proc.returncode == 0, proc.stderr
     assert os.path.isfile(os.path.join(out, "scene.json"))
+
+
+# --- WP-SIM-06: 機体の置き場（start_pose。期待値は試験の中で直接計算する） ---
+
+def pose_scene(panels, obstacles=None, robot=None, size=(10.0, 8.0)):
+    data = {"visibility": "public", "name": "pose_room",
+            "room": {"size_x": size[0], "size_y": size[1], "ceiling_h": 4.0},
+            "panels": panels,
+            "obstacles": obstacles or [],
+            "lights": [{"type": "point", "position": [5.0, 4.0, 3.5], "energy": 1.0}]}
+    if robot is not None:
+        data["robot"] = robot
+    return model.validate_scene(data)
+
+
+def axis_panel(pid, cx, cy, height=2.35):
+    """向きの無い盤（front_yaw=-π/2 なら θ=0。金具は (±0.43, ±0.43) の世界座標）。"""
+    return {"id": pid, "center": [cx, cy], "front_yaw": -1.5707963267948966,
+            "width": 1.0, "depth": 1.0, "height": height, "label": ""}
+
+
+def test_robot_is_optional_in_description():
+    data = base_scene()
+    del data["robot"]
+    assert model.validate_scene(data)["robot"] is None
+
+
+def test_distance_boundary_just_inside_and_outside():
+    scene_data = pose_scene([axis_panel("P001", 5.0, 5.0)])
+    rx, ry = 5.0, 1.0
+    # 金具は (5±0.43, 5±0.43)。いちばん遠い金具までの距離（独立計算）。
+    farthest = math.hypot(0.43, 5.43 - ry)
+    # 探す距離 - 余裕(0.3) がちょうど farthest → 内側として見える。
+    visible, hidden = start_pose.visible_panels_at(
+        scene_data, rx, ry, farthest + 0.3, 3.1)
+    assert visible == ["P001"] and hidden == []
+    # 0.02 m 短ければ外側で far。
+    visible, hidden = start_pose.visible_panels_at(
+        scene_data, rx, ry, farthest + 0.3 - 0.02, 3.1)
+    assert visible == [] and hidden == [{"id": "P001", "reason": "far"}]
+
+
+def test_tall_obstacle_blocks_low_cart_does_not():
+    panel = axis_panel("P001", 5.0, 5.0)
+    # 線分（カメラ (5,1,3.1) → 金具 z≈2.386）が障害物 (5,3) の上を横切る高さは
+    # 途中で約 2.55〜2.75 m。高さ 2.9 m の棚は遮り、0.5 m の台車は通る。
+    for height, expected in ((2.9, []), (0.5, ["P001"])):
+        scene_data = pose_scene(
+            [panel], obstacles=[{"center": [5.0, 3.0], "size": [1.0, 0.5, height], "yaw": 0.0}])
+        visible, hidden = start_pose.visible_panels_at(scene_data, 5.0, 1.0, 5.0, 3.1)
+        assert visible == expected, height
+        if not expected:
+            assert hidden == [{"id": "P001", "reason": "blocked"}]
+
+
+def test_other_panel_blocks_own_panel_does_not():
+    # 背の高い盤（3.0 m）が前の盤。後ろの盤の金具への線分は前盤の箱を切る。
+    # 自分の盤の箱が線分に当たっても（金具は自盤の上）見えると数える。
+    scene_data = pose_scene([
+        axis_panel("P001", 5.0, 5.0),
+        axis_panel("P002", 5.0, 3.5, height=3.0),
+    ])
+    visible, hidden = start_pose.visible_panels_at(scene_data, 5.0, 1.0, 5.0, 3.1)
+    assert visible == ["P002"], (visible, hidden)
+    assert hidden == [{"id": "P001", "reason": "blocked"}]
+
+
+def test_chooses_grid_point_clear_of_walls_and_panels_and_is_deterministic():
+    scene_data = pose_scene([axis_panel("P001", 5.0, 5.0)])
+    first = start_pose.choose_start_pose(scene_data, 5.0, 3.1, 0.36)
+    second = start_pose.choose_start_pose(scene_data, 5.0, 3.1, 0.36)
+    assert first == second
+    assert first["pose_source"] == "auto"
+    assert first["visible_panels"] == ["P001"]
+    x, y, yaw = first["pose"]
+    # 壁の内側の面（wall_t/2=0.075）から半径（0.36+0.2=0.56）離れていること。
+    assert 0.075 + 0.56 <= x <= 10.0 - 0.075 - 0.56
+    assert 0.075 + 0.56 <= y <= 8.0 - 0.075 - 0.56
+    # 盤の箱（x 4.5〜5.5, y 4.5〜5.5）に半径分当たっていないこと（独立計算）。
+    dx = max(abs(x - 5.0) - 0.5, 0.0)
+    dy = max(abs(y - 5.0) - 0.5, 0.0)
+    assert math.hypot(dx, dy) >= 0.56
+    # 向きは盤の中心（5, 5）へ（独立計算）。
+    assert abs(yaw - math.atan2(5.0 - y, 5.0 - x)) < 1e-9
+    # 見える盤 1 枚のときの置き場は、盤までの距離が短い所が勝つ。
+    # (5, 3.75) は盤の中心まで 1.25 m で当たらない（下に計算）。
+    assert math.hypot(5.0 - x, 5.0 - y) <= math.hypot(5.0 - 5.0, 5.0 - 3.75) + 1e-9
+
+
+def test_tie_break_picks_nearest_max_distance_point():
+    # 左右対称の 2 枚。両方見えて、見える盤までのいちばん遠い距離が短い所は
+    # 中心軸の直下 (5, 4)（中心までの距離 sqrt(1^2+1^2)=1.414...）。
+    scene_data = pose_scene([axis_panel("P001", 4.0, 5.0), axis_panel("P002", 6.0, 5.0)])
+    robot = start_pose.choose_start_pose(scene_data, 5.0, 3.1, 0.36)
+    assert robot["visible_panels"] == ["P001", "P002"]
+    assert robot["pose"][:2] == [5.0, 4.0], robot["pose"]
+
+
+def test_given_pose_is_used_unchanged_with_reasons():
+    scene_data = pose_scene([axis_panel("P001", 5.0, 5.0)], robot={"pose": [6.0, 1.0, 0.5]})
+    robot = start_pose.resolve_robot  # 参照だけ（設定は下の試験で確かめる）
+    del robot
+    given = start_pose.evaluate_given_pose(scene_data, [6.0, 1.0, 0.5], 5.0, 3.1)
+    assert given["pose"] == [6.0, 1.0, 0.5]
+    assert given["pose_source"] == "given"
+    assert given["visible_panels"] == ["P001"]
+
+
+def test_config_files_must_be_readable(tmp_path):
+    with pytest.raises(start_pose.StartPoseError):
+        start_pose.load_locator_params(os.path.join(str(tmp_path), "no_ss"))
+    with pytest.raises(start_pose.StartPoseError):
+        start_pose.load_robot_radius(os.path.join(str(tmp_path), "no_nav2.yaml"))
+    ss_repo, nav2 = fake_configs(tmp_path)
+    assert start_pose.load_locator_params(ss_repo) == (5.0, 3.1)
+    assert start_pose.load_robot_radius(nav2) == 0.36
+    # robot_radius の無い nav2 は止める。
+    empty = os.path.join(str(tmp_path), "empty.yaml")
+    with open(empty, "w", encoding="utf-8") as f:
+        yaml.safe_dump({"bt_navigator": {"ros__parameters": {}}}, f)
+    with pytest.raises(start_pose.StartPoseError):
+        start_pose.load_robot_radius(empty)
+
+
+def test_build_scene_auto_and_given_writes_robot_keys(tmp_path, monkeypatch):
+    monkeypatch.delenv("BLENDER", raising=False)
+    ss_repo, nav2 = fake_configs(tmp_path)
+    # robot 無し → auto
+    data = base_scene()
+    del data["robot"]
+    path = write_scene(tmp_path, data)
+    out, _ = scene.build_scene(path, out_dir=os.path.join(str(tmp_path), "auto_o"),
+                               ss_repo=ss_repo, nav2_params=nav2)
+    answer = json.load(open(os.path.join(out, "scene.json"), encoding="utf-8"))
+    assert answer["robot"]["pose_source"] == "auto"
+    # robot មាន → given で置き場は発表どおりのまま
+    path = write_scene(tmp_path, base_scene(), "given.yaml")
+    out, _ = scene.build_scene(path, out_dir=os.path.join(str(tmp_path), "given_o"),
+                               ss_repo=ss_repo, nav2_params=nav2)
+    answer = json.load(open(os.path.join(out, "scene.json"), encoding="utf-8"))
+    assert answer["robot"]["pose"] == [5.0, 1.0, 0.0]
+    assert answer["robot"]["pose_source"] == "given"

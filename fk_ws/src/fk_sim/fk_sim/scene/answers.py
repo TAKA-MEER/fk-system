@@ -34,7 +34,12 @@ def build_answer(scene):
         "panels": panels,
         "obstacles": [{"center": list(o["center"]), "size": list(o["size"]), "yaw": o["yaw"]}
                       for o in scene["obstacles"]],
-        "robot": {"pose": list(scene["robot"]["pose"])},
+        "robot": {
+            "pose": list(scene["robot"]["pose"]),
+            "pose_source": scene["robot"].get("pose_source", "given"),
+            "visible_panels": list(scene["robot"].get("visible_panels", [])),
+            "hidden_panels": [dict(h) for h in scene["robot"].get("hidden_panels", [])],
+        },
     }
 
 
