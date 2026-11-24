@@ -162,7 +162,7 @@ th の 8-g の受け手が th の作業ブランチに揃った（`fk_ws/sim/th_
 | `sim_fk` | `fk_robot` の像で `auto_runner` を起こす（`fk.launch.py`）。パラメータは `lift_host: 127.0.0.1`・`lift_port: 18080`（hve の偽物）・`mechanism_bypass: true`（既定）。ROS は §6 と同じ（host・78・UDP） |
 | 自律測定への入り方 | th の画面は使わない。道具が th の `/system/trigger` に `ui.goto`（`{"kind":"AUTO_MEASURE"}`）を送る。**本システムの生存確認が th に届いてから**（届く前は th が `measure_link_lost` で断る。th の知らせ 2026-11-24） |
 | 下端 | hve の偽物が下端を自分で立てる（hve `WP-LIFTUI-08`。2026-11-24 マージ `c798949`）。`hve_up.sh` は hve のリポジトリをそのまま使うので、道具の側で `bottom` を立てない |
-| 道具 `tools/sim_auto_check/` | 一式が起きたあと: th が `IDLE`・本システムの生存確認が届く → `ui.goto` → 本システムに「開始」（`auto.begin`）→ 配置図（`/fk/auto/layout`）を待つ → 盤を選んで `auto.start` → 結果（`/fk/auto/results`）と `AutoState` を記録 → シーンの正解（`scene.json`）と盤の対応を比べる。止まった・断られたときは th と本システムの理由を残して終える |
+| 道具 `tools/sim_auto_check/` | 一式が起きたあと: th が `IDLE`・本システムの生存確認が届く → `ui.goto` → 本システムに「開始」（`auto.begin`）→ 配置図（`/fk/auto/layout`）を待つ → 盤を選んで `auto.start` → 結果（`/fk/auto/results`）と `AutoState` を記録 → シーンの正解（`scene.json`）と盤の対応を比べる。止まった・断られたときは th と本システムの理由を残して終える。**本システムの画面（`WP-AUTO-04`）が無いあいだは、画面の代わりに在席 `/ui/active_screen`（`S-60`・2 Hz。形は [DetailedDesign-web.md](DetailedDesign-web.md) §5.4）を出す**（出さないと th が `speed_limit stop` で機体を動かさない。th の知らせ 2026-11-24）。**`meas.goal` の前に th の `pose_valid` が真になるのを待つのは本システムの役目**（道具では補わない。補わないと動かないなら食い違いとして残す） |
 | 合格 | `public_room` で選んだ盤を回り切り、結果が「済み」か「飛ばした・`no_mechanism`」（バイパス中）。止まらずに最後の盤の前で指示待ちになる。th の `/measure/status` と本システムの `AutoState` の食い違いを記録する |
 | `sim_up.sh` の直し | ss を起こすところの代役の `docker`（Git Bash・Docker Desktop 向け。`ce3dba1`）は、その環境のときだけ入れる（この PC の Ubuntu では入れない）。`BLENDER` の既定も同じ |
 | 本物の th で分かったこと | th に知らせる（食い違いは th の作業ブランチにいるうちに直してもらう）。本システム側の直しは別のパケット |
