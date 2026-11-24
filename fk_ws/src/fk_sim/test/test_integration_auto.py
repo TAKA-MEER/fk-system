@@ -34,6 +34,21 @@ def test_e_two_panels_are_visited_and_listed(make_harness):
     assert not h.errors
 
 
+def test_mechanism_bypass_true_is_reported_and_flow_completes(make_harness):
+    """既定（パラメータを渡さない）で回り切り、AutoState.mechanism_bypass が true で出る。"""
+    h = make_harness(ports=True, panels=((3.0, 0.0),), fake_params=dict(nav_time_ms=300))
+    assert wait_until(lambda: h.state is not None, MARGIN_S)
+    assert h.state.mechanism_bypass is True
+    h.enter_auto()
+    assert h.command('auto.begin')[0]
+    assert wait_until(lambda: len(ids_of(h)) == 1 and h.phase == 'SELECT', LONG_S)
+    assert h.command('auto.start', ids=ids_of(h))[0]
+    assert wait_until(lambda: h.phase == 'FINISH', LONG_S), h.state
+    assert result_rows(h) == [('P001', 'SKIPPED', 'no_mechanism')]
+    assert h.state.mechanism_bypass is True
+    assert not h.errors
+
+
 def test_f_without_lift_and_ss_ports_nothing_moves(make_harness):
     """(f) 口が無ければ動かない: meas.goal は届かず、gate_reason は state_unreadable。"""
     h = make_harness(ports=False)

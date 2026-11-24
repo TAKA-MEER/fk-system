@@ -59,7 +59,9 @@ def body_rect(wx, wy, wyaw, pose, w=1.0, d=0.6, unmeasured=False):
 class Harness:
     """auto_runner と fake_th を別の実行器（別スレッド）で回し、probe で /fk/auto/* を見る。
 
-    ports=True: 昇降機（FakeLift。測定機構なし）と ss（FakeSs。panels の盤を返す）を auto_runner に渡す。
+    ports=True: 昇降機（FakeLift）と ss（FakeSs。panels の盤を返す）を auto_runner に渡す。
+    測定機構なしの道は設定の mechanism_bypass（既定 true）で入る（§2.3）。FakeLift の
+    mechanism_attached は既定の True（本物の昇降部は「付いていない」を出さない）。
     ports=False: 口を渡さない（本番の起動と同じ）。
     実行器のスレッドは例外で死なない（記録して回り続ける）。break_step=True で step の前で例外を出す。
     """
@@ -74,7 +76,7 @@ class Harness:
         self.lift = self.ss = None
         pre = []
         if ports:
-            self.lift = FakeLift(mechanism_attached=False)
+            self.lift = FakeLift(mechanism_attached=True)
             self.ss = FakeSs(responder=self._respond)
             pre = [self.lift.advance, self.ss.advance, self._maybe_break]
         else:
