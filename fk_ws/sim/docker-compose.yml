@@ -118,6 +118,8 @@ services:
       # （ホストに root 所有のものを作らない）。th_import・ss_import は
       # `fk_ws/scripts/import_th.sh`・`import_ss.sh` で先に取り込むこと。
       # 道具（tools/sim_auto_check）の出力先をホストに残す（sim_out）。
+      # 道具は `docker exec -u $(id -u):$(id -g)` で回すこと（root 所有の
+      # ファイルをホストに作らない。fk_ws/sim/README.md 段 3 の節）。
       - type: bind
         source: ${FK_REPO:?}/sim_out
         target: /root/fk_ws/sim_out

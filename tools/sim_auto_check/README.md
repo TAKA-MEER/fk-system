@@ -5,12 +5,17 @@ DetailedDesign-sim.md §7.1 の道具の行。
 
 ## 回し方
 
-`sim_fk` の像の中で回す（ROS 2 と型があるので）:
+`sim_fk` の像の中で回す（ROS 2 と型があるので）。出力は `sim_out/`
+（`sim_fk` へ bind mount 済み）に書かれるので、ホストに root 所有の
+ファイルを作らないよう、ホストのユーザーとして回す:
 
 ```bash
-docker exec sim_fk python3 /work/tools/sim_auto_check/run.py \
+docker exec -u $(id -u):$(id -g) sim_fk python3 /work/tools/sim_auto_check/run.py \
   --scene /work/sim_out/scenes/public_room
 ```
+
+th を `IDLE` に入れる手順（`dev_mode` の疎通の無視。なぜ要るか）は
+`fk_ws/sim/README.md` の段 3 の節に書いてある。
 
 `--panels P001,P002` で選ぶ盤を絞れる（既定は配置図の全部）。
 `--out` で出力先を変えられる（既定は `sim_out/auto_check/<時刻>/`）。

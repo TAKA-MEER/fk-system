@@ -71,12 +71,29 @@ bash "$SS_REPO/scripts/ss.sh" status        # ss の状態が IDLE（待ち）�
 
 ## 自律測定を通す（段 3）
 
+まず、th を `IDLE` に入れる。sim の th はそのままでは `INIT/CHECK` のまま
+`IDLE` に入れない。理由: `evt.link_ok`（`INIT/CHECK` → `IDLE` の遷移）を
+出すには物理非常停止（`/safety/estop_hw`）の受信が必要だが、sim でそれを
+出す側（`esp32_bridge`）が起動していない。th の標準の手段で開発モードの
+疎通の無視を入れると `IDLE` に入る（コードの変更はしない。`sim_up.sh`
+には自動で組み込まない）:
+
 ```bash
-python tools/sim_auto_check/run.py --scene sim_out/scenes/public_room
+docker exec sim_th bash -c 'source /opt/ros/humble/setup.bash && source /root/th_ws/install/setup.bash && export ROS_DOMAIN_ID=78 && ros2 param set connectivity_checker dev_mode true && ros2 param set connectivity_checker dev_ignore_link true'
+docker exec sim_fk bash -c 'source /opt/ros/humble/setup.bash && source /root/fk_ws/install/setup.bash && export ROS_DOMAIN_ID=78 && ros2 topic echo /measure/status --once'  # mode: IDLE を確かめる
 ```
 
-`sim_fk` の像の中で回す（ROS 2 と型があるので。`docker exec sim_fk` か
-`docker compose run`）。手順・出力の既定は `tools/sim_auto_check/README.md`。
+次に道具を回す。`sim_fk` の像の中で回す（ROS 2 と型があるので）。
+出力は `sim_out/`（`sim_fk` へ bind mount 済み）に書かれるので、
+ホストに root 所有のファイルを作らないよう `docker exec -u` で
+ホストのユーザーとして回す:
+
+```bash
+docker exec -u $(id -u):$(id -g) sim_fk python3 /work/tools/sim_auto_check/run.py \
+  --scene /work/sim_out/scenes/public_room
+```
+
+手順・出力の既定は `tools/sim_auto_check/README.md`。
 
 ## 機体を置き直して ss に依頼する（結果と正解を比べる）
 
