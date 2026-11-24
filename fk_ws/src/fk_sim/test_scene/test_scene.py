@@ -518,3 +518,43 @@ def test_build_scene_auto_and_given_writes_robot_keys(tmp_path, monkeypatch):
     answer = json.load(open(os.path.join(out, "scene.json"), encoding="utf-8"))
     assert answer["robot"]["pose"] == [5.0, 1.0, 0.0]
     assert answer["robot"]["pose_source"] == "given"
+
+
+def test_chosen_pose_clear_of_obstacle_by_radius():
+    # 盤にいちばん近い良い所（格子順で最初に当たる (3.75, 5.0)）を台車が占める。
+    # 障害物を無視するとそこが選ばれるが、選ばれた置き場は半径（0.36+0.2）だけ離れる。
+    scene_data = pose_scene(
+        [axis_panel("P001", 5.0, 5.0)],
+        obstacles=[{"center": [3.75, 5.0], "size": [1.0, 1.0, 0.4], "yaw": 0.0}])
+    robot = start_pose.choose_start_pose(scene_data, 5.0, 3.1, 0.36)
+    assert robot["visible_panels"] == ["P001"]
+    x, y = robot["pose"][:2]
+    # 障害物の矩形（x 3.25〜4.25, y 4.5〜5.5）までの距離（独立計算。回転なし）。
+    dx = max(abs(x - 3.75) - 0.5, 0.0)
+    dy = max(abs(y - 5.0) - 0.5, 0.0)
+    assert math.hypot(dx, dy) >= 0.56 - 1e-9, robot["pose"]
+
+
+def test_chosen_pose_clear_of_wall_by_radius():
+    # 盤を西の壁際に置く。壁に寄るほど盤に近くなるが、壁の内側の面
+    # （x=0.075）から半径（0.36+0.2）だけ離れた所までが置ける。
+    scene_data = pose_scene([axis_panel("P001", 1.6, 4.0)])
+    robot = start_pose.choose_start_pose(scene_data, 5.0, 3.1, 0.36)
+    assert robot["visible_panels"] == ["P001"]
+    x = robot["pose"][0]
+    assert x - 0.075 >= 0.56 - 1e-9, robot["pose"]
+
+
+def test_own_panel_box_does_not_block_when_camera_below_top():
+    # カメラ（2.0 m）が天面（2.35 m）より低いと、遠い金具への線分は
+    # 自分の盤の箱の中を切る（独立の確認: z=2.35 を切る点は盤の矩形の中）。
+    # それでも自分の盤は遮られない（見えると数える）。
+    # z=2.35 を切る t = (2.35-2.0)/(2.3865-2.0) ≈ 0.905。遠い金具 (5.43, 5.43) への
+    # 線分のその点は (5.39, 5.20) で盤の矩形（x 4.5〜5.5, y 4.5〜5.5）の中。
+    t = (2.35 - 2.0) / (2.3865 - 2.0)
+    cx = 5.0 + t * (5.43 - 5.0)
+    cy = 3.0 + t * (5.43 - 3.0)
+    assert 4.5 < cx < 5.5 and 4.5 < cy < 5.5
+    scene_data = pose_scene([axis_panel("P001", 5.0, 5.0)])
+    visible, hidden = start_pose.visible_panels_at(scene_data, 5.0, 3.0, 5.0, 2.0)
+    assert visible == ["P001"] and hidden == [], (visible, hidden)
