@@ -137,6 +137,20 @@
 
 **段 3 は th の 8-g を待つ**（2026-11-22 ユーザー決定。偽の th で Gazebo の機体を動かす案は採らなかった。本物の th の振る舞いで確かめるため）。
 
+### 7.1 段 3 の作り（2026-11-24 案。`WP-SIM-05`）
+
+th の 8-g の受け手が th の作業ブランチに揃った（`fk_ws/sim/th_sim_ref`・`fk_ws/th_ref` を th `41e253b0` に揃えた）。本システムの口も揃った（ss は `WP-AUTO-06`、昇降機は `WP-AUTO-05`、th との食い違いは `WP-AUTO-11` で直した）。
+
+| 項目 | 決まり（案） |
+| --- | --- |
+| `sim_fk` | `fk_robot` の像で `auto_runner` を起こす（`fk.launch.py`）。パラメータは `lift_host: 127.0.0.1`・`lift_port: 18080`（hve の偽物）・`mechanism_bypass: true`（既定）。ROS は §6 と同じ（host・78・UDP） |
+| 自律測定への入り方 | th の画面は使わない。道具が th の `/system/trigger` に `ui.goto`（`{"kind":"AUTO_MEASURE"}`）を送る。**本システムの生存確認が th に届いてから**（届く前は th が `measure_link_lost` で断る。th の知らせ 2026-11-24） |
+| 下端 | hve の偽物が下端を自分で立てる直し（hve `WP-LIFTUI-08`）が入っていればそれを使う。入っていなければ、道具が昇降部の偽物の高さが 0 になったら `POST /api/fake` で `bottom` を立てる（暫定。入ったら外す） |
+| 道具 `tools/sim_auto_check/` | 一式が起きたあと: th が `IDLE`・本システムの生存確認が届く → `ui.goto` → 本システムに「開始」（`auto.begin`）→ 配置図（`/fk/auto/layout`）を待つ → 盤を選んで `auto.start` → 結果（`/fk/auto/results`）と `AutoState` を記録 → シーンの正解（`scene.json`）と盤の対応を比べる。止まった・断られたときは th と本システムの理由を残して終える |
+| 合格（案） | `public_room` で選んだ盤を回り切り、結果が「済み」か「飛ばした・`no_mechanism`」（バイパス中）。止まらずに最後の盤の前で指示待ちになる。th の `/measure/status` と本システムの `AutoState` の食い違いを記録する |
+| `sim_up.sh` の直し | ss を起こすところの代役の `docker`（Git Bash・Docker Desktop 向け。`ce3dba1`）は、その環境のときだけ入れる（この PC の Ubuntu では入れない）。`BLENDER` の既定も同じ |
+| 本物の th で分かったこと | th に知らせる（食い違いは th の作業ブランチにいるうちに直してもらう）。本システム側の直しは別のパケット |
+
 ## 8. 現場再現版の置き場と守り
 
 | 項目 | 案 |
