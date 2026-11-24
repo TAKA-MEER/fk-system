@@ -1,7 +1,8 @@
-# シミュレーション一式（WP-SIM-04）
+# シミュレーション一式（WP-SIM-04・WP-SIM-05）
 
-th の Gazebo・hve の偽物と描画サービス・本物の ss の 3 つを起こして、
-**ss で配置図が取れる**ところまで（段 2）。
+th の Gazebo・hve の偽物と描画サービス・本物の ss を起こして、
+**ss で配置図が取れる**ところまで（段 2）。段 3 からは本システム
+（`sim_fk`）も起こして自律測定を通す（`tools/sim_auto_check/`）。
 
 DetailedDesign-sim.md §6（起動）・§7（段 2）の道具。名前の正本は
 DetailedDesign-names.md §8（`fk_ws/sim/th_sim_ref`・`import_th_sim.sh`・
@@ -21,7 +22,7 @@ bash fk_ws/sim/sim_up.sh <名前>   # 別のシーン
 | `TH_REPO` | th-system の置き場 | `../th-system` |
 | `SS_REPO` | ss-system の置き場 | `../ss-system` |
 | `HVE_REPO` | hve-system の置き場 | `../hve-system` |
-| `BLENDER` | シーン生成に使う Blender の実行ファイル | `C:/Program Files/Blender Foundation/Blender 4.2/blender.exe` が無い場合は失敗 |
+| `BLENDER` | シーン生成に使う Blender の実行ファイル | Windows のときだけ `C:/Program Files/Blender Foundation/Blender 4.2/blender.exe`。Ubuntu では `~/.local/opt/blender-4.2.2-linux-x64/blender` があればそれ（公式 Linux 版 4.2.2。https://download.blender.org/release/Blender4.2/）。どちらも無ければ失敗 |
 | `ROS_DOMAIN_ID` | 78 固定 | — |
 
 `ROS_DOMAIN_ID=78`・`network_mode: host`・FastDDS は UDP だけ（th の
@@ -33,6 +34,7 @@ bash fk_ws/sim/sim_up.sh <名前>   # 別のシーン
 | --- | --- | --- |
 | `sim_th` | `fk-sim-stack/th:latest`（`fk_ws/sim/th_src/Dockerfile` から） | `ros2 launch th_bringup gazebo.launch.py sim:=true gui:=false rviz:=false world:=<生成したワールド> robot_x/y/yaw:=<記述の機体の置き場>`。`th_ws` は像の中で `colcon build` 済み（起動でビルドしない） |
 | `sim_hve` | `fk-sim:latest`（ビルド済みの描画の像） | `bash fk_ws/sim/hve_up.sh`。`pose_source: gazebo`（Gazebo の機体の真の位置で描く） |
+| `sim_fk` | `fk_ws-fk_robot:latest`（`fk_ws` の `docker compose build` でできる像） | コンテナ内で `colcon build` して `ros2 launch fk_bringup fk.launch.py`。パラメータは `lift_host: 127.0.0.1`・`lift_port: 18080`・`mechanism_bypass: true`（インストール先の `params.yaml` へ上書き。ホストの物は変えない）。起動前に `fk_ws/scripts/import_th.sh`・`import_ss.sh` で `th_import`・`ss_import` を取り込むこと |
 | ss | ss-system の `scripts/ss.sh start` | `start --camera-host 127.0.0.1:18000 --lift-host 127.0.0.1:18080`（`ROS_DOMAIN_ID=78` を渡す。ss の起動の作りを写さない） |
 
 シーンの生成物（`world.world`・`scene.glb`・`scene.json`）は
@@ -66,6 +68,33 @@ docker exec sim_th ros2 service list | grep get_entity_state   # Gazebo が見�
 docker exec sim_hve curl -s http://127.0.0.1:18100/frame -o /tmp/frame.jpg  # sim_render が絵を返した
 bash "$SS_REPO/scripts/ss.sh" status        # ss の状態が IDLE（待ち）になる
 ```
+
+## 自律測定を通す（段 3）
+
+まず、th を `IDLE` に入れる。sim の th はそのままでは `INIT/CHECK` のまま
+`IDLE` に入れない。理由: `evt.link_ok`（`INIT/CHECK` → `IDLE` の遷移）を
+出すには物理非常停止（`/safety/estop_hw`）の受信が必要だが、sim でそれを
+出す側（`esp32_bridge`）が起動していない。th の標準の手段で開発モードの
+疎通の無視を入れると `IDLE` に入る（コードの変更はしない。`sim_up.sh`
+には自動で組み込まない）:
+
+```bash
+docker exec sim_th bash -c 'source /opt/ros/humble/setup.bash && source /root/th_ws/install/setup.bash && export ROS_DOMAIN_ID=78 && ros2 param set connectivity_checker dev_mode true && ros2 param set connectivity_checker dev_ignore_link true'
+docker exec sim_fk bash -c 'source /opt/ros/humble/setup.bash && source /root/fk_ws/install/setup.bash && export ROS_DOMAIN_ID=78 && ros2 topic echo /measure/status --once'  # mode: IDLE を確かめる
+```
+
+次に道具を回す。`sim_fk` の像の中で回す（ROS 2 と型があるので）。
+出力は `sim_out/`（`sim_fk` へ bind mount 済み）に書かれる。道具は
+root のまま回し（`docker exec -u` でホストのユーザーにすると、像の
+`HOME` が `/` になって `rclpy.init()` が落ち、`/root` が読めず型も
+読めない）、終わったあとに同じ exec の中で出力先をホストのユーザーへ
+`chown` する（道具が失敗しても `trap` で chown される）:
+
+```bash
+docker exec sim_fk bash -c 'set +u; source /opt/ros/humble/setup.bash; source /root/fk_ws/install/setup.bash; export ROS_DOMAIN_ID=78; trap "chown -R '"$(id -u):$(id -g)"' /root/fk_ws/sim_out/auto_check" EXIT; python3 /work/tools/sim_auto_check/run.py --scene /work/sim_out/scenes/public_room'
+```
+
+手順・出力の既定は `tools/sim_auto_check/README.md`。
 
 ## 機体を置き直して ss に依頼する（結果と正解を比べる）
 

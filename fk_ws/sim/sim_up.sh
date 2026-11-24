@@ -8,6 +8,7 @@
 # 起きるもの:
 #   - compose の sim_th（th の Gazebo。像 fk-sim-stack/th:latest）
 #   - compose の sim_hve（hve の偽物と描画サービス。像 fk-sim:latest）
+#   - compose の sim_fk（本システム auto_runner。像 fk_ws-fk_robot:latest）
 #   - ss（ss-system の scripts/ss.sh start。コンテナ名 ss-system）
 # 止めるのは `sim_down.sh`（自分が起こしたものだけ）。
 #
@@ -29,6 +30,18 @@ SCENE_YAML="$FK_WS/src/fk_sim/scenes/$SCENE_NAME.yaml"
 
 export ROS_DOMAIN_ID=78
 
+# Windows（Git Bash・Docker Desktop）向けの shim・既定は、その環境のときだけ入れる。
+# Ubuntu では入れない（Docker Desktop のパス変換の問題が無いため）。
+IS_WINDOWS=0
+case "$(uname -s 2>/dev/null)" in
+  MINGW*|MSYS*) IS_WINDOWS=1 ;;
+esac
+if [ "$IS_WINDOWS" = "0" ] && [ -e "/c/Program Files/Docker/Docker/resources/bin/docker.exe" ]; then
+  IS_WINDOWS=1
+fi
+# python を呼ぶ箇所は Ubuntu では python3（あるほうを使う）
+if command -v python3 >/dev/null 2>&1; then PYTHON_BIN=python3; else PYTHON_BIN=python; fi
+
 TH_REPO="${TH_REPO:-$FK_REPO/../th-system}"
 SS_REPO="${SS_REPO:-$FK_REPO/../ss-system}"
 HVE_REPO="${HVE_REPO:-$FK_REPO/../hve-system}"
@@ -42,8 +55,12 @@ fi
 OUT_DIR="$FK_REPO/sim_out/scenes/$SCENE_NAME"
 echo "== scene 生成（$SCENE_NAME）=="
 BLENDER="${BLENDER:-}"
-if [ -z "$BLENDER" ] && [ -f "C:/Program Files/Blender Foundation/Blender 4.2/blender.exe" ]; then
+if [ -z "$BLENDER" ] && [ "$IS_WINDOWS" = "1" ] && [ -f "C:/Program Files/Blender Foundation/Blender 4.2/blender.exe" ]; then
   BLENDER="C:/Program Files/Blender Foundation/Blender 4.2/blender.exe"
+fi
+# Ubuntu: 公式 Linux 版（4.2）を ~/.local/opt/ に置いたときの既定
+if [ -z "$BLENDER" ] && [ "$IS_WINDOWS" = "0" ] && [ -x "$HOME/.local/opt/blender-4.2.2-linux-x64/blender" ]; then
+  BLENDER="$HOME/.local/opt/blender-4.2.2-linux-x64/blender"
 fi
 if [ ! -f "$OUT_DIR/scene.json" ] || [ "$SCENE_YAML" -nt "$OUT_DIR/scene.json" ]; then
   if [ -z "$BLENDER" ]; then
@@ -51,12 +68,12 @@ if [ ! -f "$OUT_DIR/scene.json" ] || [ "$SCENE_YAML" -nt "$OUT_DIR/scene.json" ]
     exit 1
   fi
   (cd "$FK_REPO" && PYTHONPATH=fk_ws/src/fk_sim BLENDER="$BLENDER" \
-    python -m fk_sim.scene build "$SCENE_YAML")
+    "$PYTHON_BIN" -m fk_sim.scene build "$SCENE_YAML")
 else
   echo "生成物が残っています（$OUT_DIR。如しき色は再生成しない）"
 fi
 
-python - "$OUT_DIR" "$FK_REPO" <<'PY'
+"$PYTHON_BIN" - "$OUT_DIR" "$FK_REPO" <<'PY'
 import json, os, sys
 scene_dir, fk_repo = sys.argv[1], sys.argv[2]
 scene_file = os.path.join(scene_dir, "scene.json").replace("\\", "/")
@@ -79,12 +96,12 @@ if [ -n "$(docker ps -q --filter 'name=^ss-system$' 2>/dev/null)" ]; then
   exit 1
 fi
 
-# --- 4. compose で sim_th・sim_hve を起こす -------------------------------------
+# --- 4. compose で sim_th・sim_hve・sim_fk を起こす -------------------------------------
 export WORLD_SRC="$OUT_DIR/world.world"
 export SCENE_DIR_SRC="$OUT_DIR"
-export FK_REPO HVE_REPO SS_REPO
+export FK_REPO FK_WS HVE_REPO SS_REPO
 
-echo "== compose で sim_th・sim_hve を起こす =="
+echo "== compose で sim_th・sim_hve・sim_fk を起こす =="
 echo "注意: th の像（fk-sim-stack/th:latest）のビルドは時間がかかります（初回）"
 docker compose -p fk-sim-stack -f "$SIM_DIR/docker-compose.yml" up -d
 
@@ -114,6 +131,7 @@ echo "== ss を起こす（$SS_REPO/scripts/ss.sh start）=="
 # Git Bash の /c/... パスを docker Desktop が読めないため、
 # MSYS_NO_PATHCONV=1 で docker を呼ぶ shim を PATH に入れる。
 # shim は止める時に不要になるが、他に影響させるものは無い（パスにだけ入る）。
+if [ "$IS_WINDOWS" = "1" ]; then
 mkdir -p "$FK_REPO/.briefs/tmp/docker_shim"
 cat > "$FK_REPO/.briefs/tmp/docker_shim/docker" <<'SHIM'
 #!/usr/bin/env bash
@@ -121,6 +139,7 @@ MSYS_NO_PATHCONV=1 exec "/c/Program Files/Docker/Docker/resources/bin/docker.exe
 SHIM
 chmod +x "$FK_REPO/.briefs/tmp/docker_shim/docker"
 export PATH="$FK_REPO/.briefs/tmp/docker_shim:$PATH"
+fi
 
 # ss の像は古いモデルの可能性があり（websockets が無い等）、
 # ss の Dockerfile から作り直す（ss のリポジトリは読み取り専用なので、書くのは像だけ）。
@@ -140,6 +159,7 @@ OUT_DIR=$OUT_DIR
 SS_REPO=$SS_REPO
 FK_REPO=$FK_REPO
 HVE_REPO=$HVE_REPO
+FK_WS=$FK_WS
 SCENE_DIR=$SCENE_DIR_SRC
 SCENE_DIR_SRC=$SCENE_DIR_SRC
 WORLD_SRC=$WORLD_SRC
