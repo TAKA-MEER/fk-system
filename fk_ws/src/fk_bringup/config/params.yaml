@@ -11,6 +11,8 @@ auto_runner:
     lift_state_stale_ms: 500.0
     lift_cmd_period_ms: 100
     lift_host: "hve-lift.local"
+    lift_port: 80
+    lift_lower_speed_mmps: 100
     lift_drift_stop_mm: 50.0
     no_lower_move_max_m: 0.0
     lift_lower_timeout_s: 60.0
