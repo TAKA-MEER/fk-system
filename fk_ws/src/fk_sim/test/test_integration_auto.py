@@ -13,9 +13,14 @@ def result_rows(h):
     return [(r.panel_id, r.result, r.reason) for r in h.results[-1].results] if h.results else []
 
 
+def begin(h):
+    """auto.begin を、状態が読み取れるようになるまで待って出す（状態の届く順に頼らない）。"""
+    assert wait_until(lambda: h.command('auto.begin')[0], LONG_S)
+
+
 def to_select(h):
     h.enter_auto()
-    assert h.command('auto.begin')[0]
+    begin(h)
     assert wait_until(lambda: len(ids_of(h)) == 2 and h.phase == 'SELECT', LONG_S)
 
 
@@ -50,7 +55,7 @@ def test_g_jog_pauses_and_run_continues_to_the_end(make_harness):
     """(g) 走っている間にジョグ → PAUSED → auto.run → 続きから回り切る。"""
     h = make_harness(ports=True, panels=((3.0, 0.0),), fake_params=dict(nav_time_ms=2000))
     h.enter_auto()
-    assert h.command('auto.begin')[0]
+    begin(h)
     assert wait_until(lambda: h.phase == 'SELECT' and ids_of(h), LONG_S)
     assert h.command('auto.start', ids=ids_of(h))[0]
     assert wait_until(lambda: h.state.th_state == 'NAV', LONG_S)
@@ -65,11 +70,94 @@ def test_g_jog_pauses_and_run_continues_to_the_end(make_harness):
     assert h.th_commands.count('meas.goal') == 1 and h.th_commands.count('meas.start') == 1
 
 
+def test_i_estop_pauses_not_idle_and_run_continues_after_release(make_harness):
+    """(i) 走っている間に非常停止 → PAUSED（IDLE ではない）→ 解除 → auto.run → 回り切る。"""
+    h = make_harness(ports=True, panels=((3.0, 0.0),), fake_params=dict(nav_time_ms=2000))
+    h.enter_auto()
+    begin(h)
+    assert wait_until(lambda: h.phase == 'SELECT' and ids_of(h), LONG_S)
+    assert h.command('auto.start', ids=ids_of(h))[0]
+    assert wait_until(lambda: h.state.th_state == 'NAV', LONG_S)
+    h.fake.do(h.fake.model.human_estop)
+    assert wait_until(lambda: h.phase == 'PAUSED' and h.state.th_mode == 'ESTOP', LONG_S)
+    assert h.command('auto.run') == (False, 'phase_not_accepting')   # 解けるまで受けない
+    assert wait_until(lambda: h.phase == 'PAUSED', LONG_S)
+    h.fake.do(h.fake.model.human_estop_release)
+    assert wait_until(lambda: h.state.th_mode == 'AUTO_MEASURE' and h.state.th_state == 'PAUSE', LONG_S)
+    assert h.phase == 'PAUSED'                                     # 解除しただけでは走らない
+    assert h.command('auto.run')[0]
+    assert wait_until(lambda: h.phase == 'FINISH', LONG_S), h.state
+    assert result_rows(h) == [('P001', 'SKIPPED', 'no_mechanism')]
+    assert h.th_commands.count('meas.goal') == 1 and h.th_commands.count('meas.start') == 1
+    assert not h.errors
+
+
+def test_j_carry_pauses_not_idle_and_run_continues_after_release(make_harness):
+    """(j) 手押しでも同じ（モードは CARRY）。"""
+    h = make_harness(ports=True, panels=((3.0, 0.0),), fake_params=dict(nav_time_ms=2000))
+    h.enter_auto()
+    begin(h)
+    assert wait_until(lambda: h.phase == 'SELECT' and ids_of(h), LONG_S)
+    assert h.command('auto.start', ids=ids_of(h))[0]
+    assert wait_until(lambda: h.state.th_state == 'NAV', LONG_S)
+    h.fake.do(h.fake.model.human_carry)
+    assert wait_until(lambda: h.phase == 'PAUSED' and h.state.th_mode == 'CARRY', LONG_S)
+    h.fake.do(h.fake.model.human_carry_release)
+    assert wait_until(lambda: h.state.th_mode == 'AUTO_MEASURE' and h.state.th_state == 'PAUSE', LONG_S)
+    assert h.command('auto.run')[0]
+    assert wait_until(lambda: h.phase == 'FINISH', LONG_S), h.state
+    assert result_rows(h) == [('P001', 'SKIPPED', 'no_mechanism')]
+    assert h.th_commands.count('meas.goal') == 1 and h.th_commands.count('meas.start') == 1
+    assert not h.errors
+
+
+def test_k_localization_lost_via_estop_goes_to_reentry_and_refuses_run(make_harness):
+    """(k) 見失い（ESTOP を経る）→ REENTRY。「走行」を受けない。"""
+    h = make_harness(ports=True, panels=((3.0, 0.0),), fake_params=dict(nav_time_ms=2000))
+    h.enter_auto()
+    begin(h)
+    assert wait_until(lambda: h.phase == 'SELECT' and ids_of(h), LONG_S)
+    assert h.command('auto.start', ids=ids_of(h))[0]
+    assert wait_until(lambda: h.state.th_state == 'NAV', LONG_S)
+    h.fake.do(h.fake.model.lose_localization)
+    assert wait_until(lambda: h.phase == 'REENTRY', LONG_S), h.state
+    assert h.state.reentry_required
+    assert h.command('auto.run') == (False, 'phase_not_accepting')
+    assert wait_until(lambda: h.phase == 'REENTRY', LONG_S)
+    assert not h.errors
+
+
+def test_l_restarted_runner_does_not_reuse_command_ids(make_harness):
+    """(l) fake_th を動かしたまま auto_runner を作り直しても、指示の id が重ならず、
+    最初の指示が bad_argument で拒否されない。"""
+    h = make_harness(ports=True, panels=((3.0, 0.0),), fake_params=dict(nav_time_ms=300))
+    h.enter_auto()
+    begin(h)
+    assert wait_until(lambda: h.phase == 'SELECT' and ids_of(h), LONG_S)
+    assert h.command('auto.start', ids=ids_of(h))[0]
+    assert wait_until(lambda: h.phase == 'FINISH', LONG_S), h.state
+    old_ids = set(h.runner.runner._sent)
+    assert old_ids
+    h.restart_runner()
+    # 前の runner は meas.finish で th を IDLE に抜けた。人が入り直す（fake_th の操作）
+    h.fake.do(h.fake.model.human_enter_auto)
+    assert wait_until(lambda: h.state and h.state.th_mode == 'AUTO_MEASURE'
+                      and h.state.phase == 'IDLE', LONG_S)
+    begin(h)
+    assert wait_until(lambda: h.phase == 'SELECT' and ids_of(h), LONG_S)
+    assert h.command('auto.start', ids=ids_of(h))[0]
+    assert wait_until(lambda: h.phase == 'FINISH', LONG_S), h.state
+    new_ids = set(h.runner.runner._sent)
+    assert new_ids and not (new_ids & old_ids)          # 接頭辞が変わって重ならない
+    assert h.state.th_reject_reason == ''                # bad_argument で拒否されなかった
+    assert not h.errors
+
+
 def test_h_th_rejection_reaches_the_screen(make_harness):
     """(h) th が meas.goal を拒否 → th_reject_reason に出て SELECT に戻る。"""
     h = make_harness(ports=True, panels=((3.0, 0.0),))
     h.enter_auto()
-    assert h.command('auto.begin')[0]
+    begin(h)
     assert wait_until(lambda: h.phase == 'SELECT' and ids_of(h), LONG_S)
     h.fake.do(setattr, h.fake.model, 'corner_obstacle', True)
     assert h.command('auto.start', ids=ids_of(h))[0]
