@@ -17,7 +17,7 @@ auto_runner:
     no_lower_move_max_m: 0.0
     lift_lower_timeout_s: 60.0
     stand_distance_min_m: 0.389
-    stand_margin_m: 0.1
+    stand_margin_m: 0.5
     reroute_max: 3
     blocked_wait_s: 5.0
     ss_result_timeout_s: 300.0
