@@ -115,6 +115,12 @@ def classify_end(state, results, selected_ids):
 
     戻り値: `finished_waiting`（最後の盤の前で指示待ち）・`halted`・
     `rejected`（受付拒否が残っている）・`timeout`・`running`。
+
+    `rejected` には、選んだ盤がまだ残っているのに本システムが `SELECT`
+    に戻り、`th_reject_reason`（例: th が発進を拒否した理由）が残っている
+    場合も含む（WP-SIM-08）。この状態では本システムは指示待ちで何も進まない
+    ため、時間切れまで待たずに終える。`finished_waiting`（全盤が済んだ）が
+    優先する。
     """
     phase = (state or {}).get("phase", "")
     halt = (state or {}).get("halt_reason", "")
@@ -122,6 +128,9 @@ def classify_end(state, results, selected_ids):
         return "halted"
     if is_pass(results, selected_ids) and phase in ("SELECT", "FINISH"):
         return "finished_waiting"
+    if (state or {}).get("th_reject_reason") and phase == "SELECT" \
+            and not is_pass(results, selected_ids):
+        return "rejected"
     if (state or {}).get("gate_reason"):
         return "rejected"
     return "running"

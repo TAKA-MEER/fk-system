@@ -55,6 +55,33 @@ def test_classify_end():
                         [], ["A"]) == "running"
 
 
+def test_classify_end_select_with_th_reject_and_remaining_is_rejected():
+    # WP-SIM-08: 選んだ盤が残っているのに SELECT に戻り th_reject_reason が
+    # 入っていたら、時間切れまで待たず rejected で終える。
+    state = {"phase": "SELECT", "halt_reason": "", "gate_reason": "",
+             "th_reject_reason": "corner_obstacle"}
+    results = [{"panel_id": "A", "result": "SKIPPED", "reason": "top_not_found"}]
+    assert classify_end(state, results, ["A", "B"]) == "rejected"
+    # 結果が何も無い（最初の盤の発進を拒否された）場合も rejected。
+    assert classify_end(state, [], ["A"]) == "rejected"
+
+
+def test_classify_end_select_th_reject_does_not_preempt_finished_or_running():
+    # 全盤が済んで指示待ちなら、残った th_reject_reason より finished を優先。
+    state = {"phase": "SELECT", "halt_reason": "", "gate_reason": "",
+             "th_reject_reason": "corner_obstacle"}
+    results = [{"panel_id": "A", "result": "DONE", "reason": ""}]
+    assert classify_end(state, results, ["A"]) == "finished_waiting"
+    # GOAL など SELECT 以外では、th_reject_reason があっても running のまま。
+    goal_state = {"phase": "GOAL", "halt_reason": "", "gate_reason": "",
+                  "th_reject_reason": "corner_obstacle"}
+    assert classify_end(goal_state, [], ["A"]) == "running"
+    # SELECT でも th_reject_reason が無ければ running のまま。
+    plain = {"phase": "SELECT", "halt_reason": "", "gate_reason": "",
+             "th_reject_reason": ""}
+    assert classify_end(plain, [], ["A"]) == "running"
+
+
 def test_format_table():
     rows = [{"layout_id": "L1", "truth_id": "P004", "center_err_m": 0.01}]
     results = [{"panel_id": "L1", "result": "DONE", "reason": ""}]
