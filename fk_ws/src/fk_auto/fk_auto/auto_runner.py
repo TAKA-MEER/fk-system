@@ -25,7 +25,7 @@ from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from fk_auto import core
 from fk_auto.ports import NoMechanism, ThPort, ThReply, ThResult
 from fk_auto.ros_ss import RosSsPort
-from fk_auto.runner import Runner
+from fk_auto.runner import Runner, _startup_prefix
 from fk_msgs.msg import AutoState, Layout, Panel, PanelResult, PanelResults
 from fk_msgs.srv import AutoCommand
 from th_system_msgs.msg import MeasureHeartbeat, MeasureResult, MeasureStatus
@@ -163,7 +163,7 @@ class AutoRunner(Node):
             ss = RosSsPort(self)
         self._cp = self._params()
         self.runner = Runner(self._th, lift, ss, arm if arm is not None else NoMechanism(self._cp),
-                             self._cp)
+                             self._cp, command_id_prefix=_startup_prefix())
 
         self._hb_pub = self.create_publisher(MeasureHeartbeat, '/measure/heartbeat', QOS_HEARTBEAT)
         self._state_pub = self.create_publisher(AutoState, '/fk/auto/state', QOS_LATCHED)

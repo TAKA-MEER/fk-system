@@ -16,6 +16,8 @@
 from __future__ import annotations
 
 import math
+import os
+import time
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Sequence, Tuple
 
@@ -109,6 +111,31 @@ _LOWERING_PHASES = ("PREPARE", "LOWER", "FINISH")
 _ACTIVE_PHASES = ("PREPARE", "SURVEY", "SELECT", "LOWER", "GOAL", "RECHECK", "AT_PANEL",
                   "FINISH")
 _SS_UNUSABLE = (SkipEvent.SS_TIMEOUT, SkipEvent.SS_RESULT_UNUSABLE)
+# th が測定の続きを持ったまま非常停止・手押しに入っているモード（DetailedDesign-auto.md §2.7）。
+# この間は人が抜けたとはみなさず、PAUSED にする（解除すると AUTO_MEASURE/PAUSE に戻る）。
+_TH_HOLD_MODES = ("ESTOP", "CARRY")
+
+
+def _base36(n: int) -> str:
+    digits = "0123456789abcdefghijklmnopqrstuvwxyz"
+    if n == 0:
+        return "0"
+    out = ""
+    while n:
+        n, r = divmod(n, 36)
+        out = digits[r] + out
+    return out
+
+
+def _startup_prefix() -> str:
+    """command_id の接頭辞（names.md §4）。起動時刻のミリ秒を 36 進にしたもの。"""
+    return _base36(int(time.time() * 1000))
+
+
+def _default_prefix() -> str:
+    """接頭辞を渡されなかったときの既定。起動ごとに変わる乱数（時計は読まない）。
+    本番の起動（auto_runner）は names.md §4 の時刻の接頭辞を渡す。"""
+    return _base36(int.from_bytes(os.urandom(8), "big"))
 
 
 @dataclass
@@ -157,8 +184,12 @@ class _Abort:
 
 class Runner:
     def __init__(self, th: Optional[ThPort], lift: Optional[LiftPort], ss: Optional[SsPort],
-                 arm: Optional[ArmPort], params: Optional[core.Params] = None):
+                 arm: Optional[ArmPort], params: Optional[core.Params] = None,
+                 command_id_prefix: Optional[str] = None):
         self.p = params or core.Params()
+        # th は終わった command_id も覚えていて重複を bad_argument で拒否するので、
+        # 起動ごとに変わる接頭辞を付ける（既定は起動時刻。試験では固定できる）。
+        self._cmd_prefix = command_id_prefix if command_id_prefix is not None else _default_prefix()
         self._th, self._lift, self._ss, self._arm = th, lift, ss, arm
         self._now = 0.0
         self._snap = core.Snapshot(now_ms=0.0)
@@ -306,6 +337,8 @@ class Runner:
             return self._no("phase_not_accepting")
         snap = self._snap
         th = self._th_fresh(snap)
+        if th is not None and th.mode in _TH_HOLD_MODES:
+            return self._no("phase_not_accepting")   # 非常停止・手押しが解けるまで受けない
         if self._paused_cause == "th":
             if th is not None and th.state != "PAUSE":
                 return self._no("phase_not_accepting")
@@ -378,7 +411,7 @@ class Runner:
             if self._th is None:
                 return None
             self._cmd_seq += 1
-            cid = f"c{self._cmd_seq}"
+            cid = f"{self._cmd_prefix}-c{self._cmd_seq}"
             self._sent[cid] = command[len("meas."):]
             self._th.send(cid, command, kw.get("map_instance_id", ""), kw.get("x", 0.0),
                           kw.get("y", 0.0), kw.get("yaw", 0.0))
@@ -500,11 +533,15 @@ class Runner:
             self._halt(core.classify_halt(HaltEvent.LIFT_OR_ARM_UNREADABLE))
 
     def _interrupts(self, snap: core.Snapshot) -> bool:
-        """どの段からでも効く割り込み。True なら、この step で段の処理はしない。"""
+        """どの段からでも効く割り込み。True なら、この step で段の処理はしない。
+
+        判定の順（DetailedDesign-auto.md §2.7）: th が IDLE などへ抜けた → IDLE、
+        HALTED・REENTRY はそのまま、入り直しが要る → REENTRY、
+        th が ESTOP・CARRY・PAUSE → PAUSED。"""
         if self._phase == "IDLE":
             return True
         th = self._th_fresh(snap)
-        if th is not None and th.mode != "AUTO_MEASURE":
+        if th is not None and th.mode not in ("AUTO_MEASURE",) + _TH_HOLD_MODES:
             self._to_idle()                   # 人が抜けた
             return True
         if self._phase in ("HALTED", "REENTRY"):
@@ -516,8 +553,9 @@ class Runner:
                 and snap.lift.operator_is_human):
             self._pause("human")              # 人が昇降機を操作した（人が優先）
             return True
-        if th is not None and th.state == "PAUSE" and self._phase in _ACTIVE_PHASES:
-            self._pause("th")
+        if th is not None and self._phase in _ACTIVE_PHASES and (
+                th.mode in _TH_HOLD_MODES or th.state == "PAUSE"):
+            self._pause("th")                 # th が ESTOP・CARRY・PAUSE の間は PAUSED（原因は th）
         return False
 
     # ------------------------------------------------------------------ 段の遷移
@@ -702,6 +740,8 @@ class Runner:
 
     def _do_paused(self, snap):
         th = self._th_fresh(snap)
+        if th is not None and th.mode in _TH_HOLD_MODES:
+            return                          # 非常停止・手押しが解けるまで PAUSED のまま
         if self._paused_cause == "ss_pose":
             self._gate_reason = "camera_pose_unknown"     # 止まっている間ずっと出す
         if self._paused_cause == "th":
