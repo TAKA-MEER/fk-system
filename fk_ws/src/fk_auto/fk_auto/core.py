@@ -51,6 +51,8 @@ class Params:
     footprint_half_m: float = 0.275
     map_occupied_min: int = 1
     th_interface_version: str = TH_INTERFACE_VERSION
+    # WAIVER(demo): W-1 測定機構なしの道への入り口（DetailedDesign-auto.md §2.3）。既定はバイパス。
+    mechanism_bypass: bool = True
     # 状態機械（runner.py）が使う値（names.md §5。WP-AUTO-03 で足した）
     reroute_max: int = 3
     blocked_wait_s: float = 5
@@ -688,9 +690,15 @@ def _lift_height_readable(s: Snapshot, p: Params) -> bool:
             and _fresh(s.lift.height_read_ms, s.now_ms, p.lift_state_stale_ms))
 
 
-def _mechanism_absent(s: Snapshot) -> bool:
-    """測定機構が付いていないと読めたときだけ True。分からないときは付いているとみなす。"""
-    return s.lift is not None and s.lift.mechanism_attached is False
+def _mechanism_absent(s: Snapshot, p: Params = Params()) -> bool:
+    """測定機構なしの道に入るか（DetailedDesign-auto.md §2.3）。入り口は本システムの設定。
+
+    WAIVER(demo): W-1 アームの制御器と通信できないとき何も動かさない制限を、測定機構を
+    搭載するまで既定でバイパスする（True は測定機構が付いていないものとして動く）。
+    LiftStatus.mechanism_attached は残すが、道の判定には使わない（本物の昇降部は
+    「付いていない」を出さない。hve protocol-modules §3）。
+    """
+    return bool(p.mechanism_bypass)
 
 
 def _arm_readable(s: Snapshot, p: Params) -> bool:
@@ -704,9 +712,15 @@ def _ss_readable(s: Snapshot, p: Params) -> bool:
 
 
 def _arm_reason(s: Snapshot, p: Params) -> Optional[str]:
-    """腕の条件（格納位置にある。測定機構なしを除く）。満たさなければ理由キー。"""
-    if _mechanism_absent(s):
+    """腕の条件（通信・格納位置。バイパス中は除く）。満たさなければ理由キー。"""
+    # WAIVER(demo): W-1 バイパス中は腕の条件を満たしているとみなす（§2.3）。
+    if _mechanism_absent(s, p):
         return None
+    if s.lift is None:
+        return "state_unreadable"
+    # バイパスでないときは、腕の制御器と通信できない（True でない）間は何も動かさない（§2.3）。
+    if s.lift.arm_link_ok is not True:
+        return "arm_link_lost"
     if not _arm_readable(s, p):
         return "state_unreadable"
     if not s.lift.arm_stowed:
@@ -750,7 +764,8 @@ def gate(command: str, snapshot: Snapshot, params: Params = Params()) -> GateRes
       → 昇降機の高さが読める（state_unreadable）→ 腕（読めない → state_unreadable、格納位置でない →
       arm_not_stowed）。
     - 表に無い指示は not_listed。
-    測定機構が付いていないと読めたときだけ腕の条件（通信を含む）を外す。
+    バイパス中（mechanism_bypass）は腕の条件（通信を含む）を外す。昇降機の高さが
+    読めないときは腕の欄だけを外しても動かない（下の _lift_height_readable の順）。
     """
     s, p = snapshot, params
     if command in _ALWAYS_COMMANDS:
@@ -769,7 +784,7 @@ def gate(command: str, snapshot: Snapshot, params: Params = Params()) -> GateRes
         r = _arm_reason(s, p) or _ss_reason(s, p)
         return GateResult(False, r) if r else GateResult(True)
     if command == CMD_LIFT_LOWER:
-        if not _mechanism_absent(s) and (s.lift is None or s.lift.arm_link_ok is not True):
+        if not _mechanism_absent(s, p) and (s.lift is None or s.lift.arm_link_ok is not True):
             return GateResult(False, "arm_link_lost")
         r = _arm_reason(s, p) or _ss_reason(s, p)
         return GateResult(False, r) if r else GateResult(True)
@@ -805,7 +820,7 @@ def drive_watch(snapshot: Snapshot, params: Params = Params()) -> WatchResult:
                  and _fresh(s.lift.height_read_ms, s.now_ms, p.lift_state_stale_ms))
     if not height_ok:
         return WatchResult(True, "state_unreadable")
-    if not _mechanism_absent(s) and not _arm_readable(s, p):
+    if not _mechanism_absent(s, p) and not _arm_readable(s, p):
         return WatchResult(True, "state_unreadable")
     if s.lift.height_above_bottom_mm >= p.lift_drift_stop_mm:
         return WatchResult(True, "lift_drift")

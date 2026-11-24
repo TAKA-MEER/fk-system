@@ -15,7 +15,8 @@ import pytest
 from fk_auto.core import (CMD_LIFT_LOWER, CMD_SS_REQUEST, LiftStatus, Params, Snapshot, SsStatus,
                           ThStatus, drive_watch, gate)
 
-P = Params()
+P = Params(mechanism_bypass=False)   # 測定機構ありの関門（§2.3 の False の道）
+PB = Params()                          # バイパスの道（既定 True）
 NOW = 10_000.0
 
 
@@ -115,19 +116,25 @@ def test_gate_move_arm_not_stowed(cmd):
 
 
 @pytest.mark.parametrize("cmd", MOVING)
-def test_gate_move_no_mechanism_waives_arm(cmd):
-    """測定機構が付いていないと読めたときだけ腕の条件を外す。"""
-    assert gate(cmd, with_lift(good(), mechanism_attached=False, arm_stowed=False), P).allowed
-    assert gate(cmd, with_lift(good(), mechanism_attached=False, arm_stowed=None,
-                               arm_read_ms=None), P).allowed
-    # 付いているか分からない（None）→ 付いているとみなす
+def test_gate_move_bypass_waives_arm(cmd):
+    """バイパス（mechanism_bypass=True）のときだけ腕の条件を外す（§2.3）。"""
+    assert gate(cmd, with_lift(good(), mechanism_attached=True, arm_stowed=False), PB).allowed
+    assert gate(cmd, with_lift(good(), mechanism_attached=True, arm_stowed=None,
+                               arm_read_ms=None), PB).allowed
+    # mechanism_attached は道の判定に使わない（True でもバイパスなら外す）
+    assert gate(cmd, with_lift(good(), mechanism_attached=False, arm_stowed=False), PB).allowed
+    # バイパスでないときは腕の条件を見る（attached の値によらない）
+    assert reason(cmd, with_lift(good(), mechanism_attached=False, arm_stowed=False)) == "arm_not_stowed"
     assert reason(cmd, with_lift(good(), mechanism_attached=None, arm_stowed=False)) == "arm_not_stowed"
     assert reason(cmd, with_lift(good(), mechanism_attached=None, arm_stowed=None)) == "state_unreadable"
 
 
 @pytest.mark.parametrize("cmd", MOVING)
-def test_gate_move_no_mechanism_does_not_waive_lift_bottom(cmd):
-    assert reason(cmd, with_lift(good(), mechanism_attached=False, at_bottom=False)) == "lift_not_bottom"
+def test_gate_move_bypass_does_not_waive_lift_bottom(cmd):
+    assert reason(cmd, with_lift(good(), mechanism_attached=True, at_bottom=False), PB) == "lift_not_bottom"
+    # 昇降機の状態が読めない（lift が None・高さが古い）ときはバイパスでも動かない
+    assert reason(cmd, replace(good(), lift=None), PB) == "state_unreadable"
+    assert reason(cmd, with_lift(good(), mechanism_attached=True, height_read_ms=NOW - 501), PB) == "state_unreadable"
 
 
 @pytest.mark.parametrize("cmd", MOVING)
@@ -159,6 +166,20 @@ def test_gate_move_reason_order_when_several_missing():
     snap = with_lift(snap, arm_stowed=True)
     assert reason("meas.goal", snap) == "ss_busy"
     assert reason("meas.goal", replace(snap, th=None)) == "state_unreadable"
+
+
+# --- バイパスでないときの腕の通信 ------------------------------------------------
+
+@pytest.mark.parametrize("cmd", MOVING + [CMD_LIFT_LOWER, CMD_SS_REQUEST])
+@pytest.mark.parametrize("link", [False, None])
+def test_gate_no_bypass_arm_link_lost_blocks_everything(cmd, link):
+    """False のとき arm_link_ok が True でない間は th・ss・昇降機へ何も出さない。"""
+    assert reason(cmd, with_lift(good(), mechanism_attached=True, arm_link_ok=link)) == "arm_link_lost"
+
+
+@pytest.mark.parametrize("cmd", MOVING + [CMD_LIFT_LOWER, CMD_SS_REQUEST])
+def test_gate_bypass_arm_link_lost_does_not_block(cmd):
+    assert gate(cmd, with_lift(good(), mechanism_attached=True, arm_link_ok=False), PB).allowed
 
 
 # --- meas.stop / abort / finish ---------------------------------------------
@@ -204,11 +225,12 @@ def test_gate_lower_arm_link_lost_including_unreadable():
                                             arm_link_ok=False)) == "arm_link_lost"
 
 
-def test_gate_lower_no_mechanism_waives_arm_and_link():
-    snap = with_lift(good(), mechanism_attached=False, arm_stowed=False, arm_link_ok=False)
-    assert gate(CMD_LIFT_LOWER, snap, P).allowed
-    # 測定機構なしでも ss の条件は外さない
-    assert reason(CMD_LIFT_LOWER, with_ss(snap, state="BUSY")) == "ss_busy"
+def test_gate_lower_bypass_waives_arm_and_link():
+    snap = with_lift(good(), mechanism_attached=True, arm_stowed=False, arm_link_ok=False)
+    assert gate(CMD_LIFT_LOWER, snap, PB).allowed
+    assert gate(CMD_LIFT_LOWER, with_lift(good(), mechanism_attached=True, arm_stowed=None), PB).allowed
+    # バイパスでも ss の条件は外さない
+    assert reason(CMD_LIFT_LOWER, with_ss(snap, state="BUSY"), PB) == "ss_busy"
 
 
 def test_gate_lower_does_not_need_th_or_bottom():
@@ -243,8 +265,10 @@ def test_gate_ss_arm_unreadable_and_not_stowed():
     assert reason(CMD_SS_REQUEST, with_lift(good(), arm_stowed=False)) == "arm_not_stowed"
 
 
-def test_gate_ss_no_mechanism_waives_arm():
-    assert gate(CMD_SS_REQUEST, with_lift(good(), mechanism_attached=False, arm_stowed=None), P).allowed
+def test_gate_ss_bypass_waives_arm():
+    assert gate(CMD_SS_REQUEST, with_lift(good(), mechanism_attached=True, arm_stowed=None), PB).allowed
+    # attached=False でもバイパスでなければ腕の条件を見る
+    assert reason(CMD_SS_REQUEST, with_lift(good(), mechanism_attached=False, arm_stowed=None)) == "state_unreadable"
 
 
 def test_gate_ss_does_not_need_bottom():
@@ -320,12 +344,12 @@ def test_watch_arm_state_stale_stops():
     assert r.stop and r.reason == "state_unreadable"
 
 
-def test_watch_no_mechanism_ignores_arm_state():
+def test_watch_bypass_ignores_arm_state():
     base = with_th(good(), state="NAV")
-    assert not drive_watch(with_lift(base, mechanism_attached=False, arm_stowed=None,
-                                     arm_read_ms=None), P).stop
-    # 高さが読めなければ測定機構なしでも止める
-    assert drive_watch(with_lift(base, mechanism_attached=False, height_read_ms=None), P).stop
+    assert not drive_watch(with_lift(base, mechanism_attached=True, arm_stowed=None,
+                                     arm_read_ms=None), PB).stop
+    # 高さが読めなければバイパスでも止める
+    assert drive_watch(with_lift(base, mechanism_attached=True, height_read_ms=None), PB).stop
 
 
 def test_watch_adjust_is_not_stopped_by_height():

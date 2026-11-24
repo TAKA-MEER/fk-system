@@ -65,10 +65,12 @@ class World:
                  lift_height_mm: float = 0.0, arm=None, params: Optional[Params] = None,
                  th_kw=None, lift_kw=None, ss_kw=None):
         self.panels = panels
-        self.p = params or Params()
+        # mechanism=False（測定機構なし）はバイパスで入り、True はバイパスでない（§2.3）
+        self.p = params or Params(mechanism_bypass=not bool(mechanism))
         self.th = FakeTh(ThModel(**(th_kw or {})))
-        self.lift = FakeLift(height_mm=lift_height_mm, mechanism_attached=mechanism,
-                             **(lift_kw or {}))
+        lift_kw = dict(lift_kw or {})
+        lift_kw.setdefault("mechanism_attached", mechanism)
+        self.lift = FakeLift(height_mm=lift_height_mm, **lift_kw)
         self.ss = FakeSs(responder=self.respond, **(ss_kw or {}))
         self.arm = arm if arm is not None else NoMechanism(self.p)
         self.runner = Runner(self.th, self.lift, self.ss, self.arm, self.p)

@@ -6,7 +6,8 @@ import pytest
 from fk_auto.core import (HaltEvent, LiftStatus, Params, RunDecision, Snapshot, SkipEvent,
                           SsStatus, ThStatus, can_run, classify_halt, classify_skip)
 
-P = Params()
+P = Params(mechanism_bypass=False)   # 測定機構あり
+PB = Params()                          # バイパス
 NOW = 10_000.0
 
 
@@ -56,8 +57,15 @@ def test_can_run_arm_out_or_unreadable():
     assert rej(with_lift(paused(), arm_stowed=None)) == "state_unreadable"
 
 
-def test_can_run_no_mechanism_ignores_arm():
-    assert can_run(with_lift(paused(), mechanism_attached=False, arm_stowed=False), P).kind == "run"
+def test_can_run_bypass_ignores_arm():
+    assert can_run(with_lift(paused(), mechanism_attached=True, arm_stowed=False), PB).kind == "run"
+    # attached=False でもバイパスでなければ腕の条件を見る
+    assert rej(with_lift(paused(), mechanism_attached=False, arm_stowed=False)) == "arm_not_stowed"
+
+
+def test_can_run_no_bypass_arm_link_lost_is_rejected():
+    assert rej(with_lift(paused(), mechanism_attached=True, arm_link_ok=False)) == "arm_link_lost"
+    assert rej(with_lift(paused(), mechanism_attached=True, arm_link_ok=None)) == "arm_link_lost"
 
 
 def test_can_run_lift_not_bottom_means_lower_first_not_reject():
