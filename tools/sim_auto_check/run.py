@@ -198,7 +198,7 @@ def main():
             rclpy.spin_once(node, timeout_sec=0.1)
             results = latest["results"].get("results", [])
             cls = classify_end(latest["state"], results, selected)
-            if cls in ("finished_waiting", "halted"):
+            if cls in ("finished_waiting", "halted", "rejected"):
                 break
         else:
             cls = "timeout"
