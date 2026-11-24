@@ -233,6 +233,8 @@ def test_estop_with_localization_lost_goes_to_reentry_not_paused():
     w = World([WPanel(3.0, 0.0)])
     to_nav(w)
     w.th.model.lose_localization()          # ESTOP を経て見失う
+    w.th.model.drain_results()              # 取り消しの結果を取りこぼした想定（状態の旗だけ）
+    w.runner._reentry_seen = False
     w.until_phase("REENTRY")
     assert w.runner.get_state().th_mode == "ESTOP"
     assert w.cmd("auto.run").reject_reason == "phase_not_accepting"
