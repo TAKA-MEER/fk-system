@@ -145,7 +145,7 @@ th 側の名前（`/measure/*`・`/map`・`/ui/active_screen`・`/safety/estop_u
 | `no_lower_move_max_m` | m | 0 | 暫定（`FK-V5`。毎回下げる） |
 | `lift_lower_timeout_s` | s | 60 | 暫定（下端まで下げきるのを待つ上限。超えたら `lift_not_lowered`） |
 | `stand_distance_min_m` | m | 0.389 | 先方（th Spec-measure §4.4。盤面から機体の中心まで） |
-| `stand_margin_m` | m | 0 | 暫定（`FK-V1`） |
+| `stand_margin_m` | m | 0.1 | 暫定（`FK-V7`。2026-11-24 ユーザー決定。th の角が描く円の境目に停まらないため） |
 | `arm_reach_m` | m | 1.76 | 先方（[Spec.md](../spec/Spec.md) §1.3。腕を起こしたとき機体の中心から測定器まで。2026-11-14 ユーザー決定）。`needs_back`。2026-11-23 |
 | `front_approach_min_m` | m | 0.58 | 先方（[Spec-auto.md](../spec/Spec-auto.md) §1。前後の並進で寄れる盤面から機体の中心までの距離。th の障害物の停止。実機では未確認）。`needs_back`。2026-11-23 |
 | `corner_inset_m` | m | 0.10 | 先方（[Spec.md](../spec/Spec.md) §1.3。四隅は天面の隅から内側 100 mm を狙う）。`needs_back`。2026-11-23 |
