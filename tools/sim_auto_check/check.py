@@ -113,8 +113,14 @@ def is_pass(results, selected_ids):
 def classify_end(state, results, selected_ids):
     """終わり方の分類。`run.py` の記録と表に出す。
 
-    戻り値: `finished_waiting`（最後の盤の前で指示待ち）・`halted`・
+    戻り値: `finished_waiting`（最後の盤の前で指示待ち）・
+    `finished_with_failures`（`FINISH` だが合格でない）・`halted`・
     `rejected`（受付拒否が残っている）・`timeout`・`running`。
+
+    本システムが `FINISH`（選んだ盤を回り終えた）になったら、合否を
+    かかわらず時間切れを待たずに終える。合格でなければ
+    `finished_with_failures`（WP-SIM-10）。飛ばした盤と理由は
+    `format_failures` で表に出す。
 
     `rejected` には、選んだ盤がまだ残っているのに本システムが `SELECT`
     に戻り、`th_reject_reason`（例: th が発進を拒否した理由）が残っている
@@ -126,6 +132,9 @@ def classify_end(state, results, selected_ids):
     halt = (state or {}).get("halt_reason", "")
     if halt:
         return "halted"
+    if phase == "FINISH":
+        return "finished_waiting" if is_pass(results, selected_ids) \
+            else "finished_with_failures"
     if is_pass(results, selected_ids) and phase in ("SELECT", "FINISH"):
         return "finished_waiting"
     if (state or {}).get("th_reject_reason") and phase == "SELECT" \
@@ -163,4 +172,24 @@ def format_table(match_rows, results):
             f"{row['layout_id']} -> {row['truth_id']}: "
             f"中心のずれ {row['center_err_m']:.3f} m, "
             f"結果 {r.get('result', '-')}/{r.get('reason', '-')}")
+    return lines
+
+
+def format_failures(results, selected_ids):
+    """`finished_with_failures` のときに表へ出す、選んだ盤の飛ばし方（文字列の列）。
+
+    `DONE` の盤は出さない。`SKIPPED` は理由をそのまま出す（バイパスの
+    `no_mechanism` を含む。飛ばしであること自体を表で見えるようにするため）。
+    それ以外の結果と、結果が無い盤も出す。
+    """
+    by_id = {r["panel_id"]: r for r in results}
+    lines = []
+    for pid in selected_ids:
+        r = by_id.get(pid)
+        if r is None:
+            lines.append(f"{pid}: 結果なし")
+        elif r["result"] == "SKIPPED":
+            lines.append(f"{pid}: SKIPPED/{r.get('reason', '-')}")
+        elif r["result"] != "DONE":
+            lines.append(f"{pid}: {r['result']}/{r.get('reason', '-')}")
     return lines
