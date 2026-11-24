@@ -122,6 +122,7 @@ th 側の名前（`/measure/*`・`/map`・`/ui/active_screen`・`/safety/estop_u
 
 | 名前 | 形 |
 | --- | --- |
+| `command_id`（th への指示） | **`auto_runner` の起動ごとに変わる接頭辞 ＋ `-c` ＋ 通し番号**（例 `k3f9a2-c12`。接頭辞は起動時刻のミリ秒を 36 進にしたもの）。th は終わった id も th が動いている間は覚えていて重複を `bad_argument` で拒否するため（2026-11-24。[-auto.md](DetailedDesign-auto.md) §2.7） |
 | `panel_id` | `P` ＋ 3 桁の通し番号（`P001`）。**`auto_runner` が起きている間は使い回さない**（探し直し・入り直しで配置図を作り直しても、前の結果の盤と混ざらない）。盤前で認識し直して位置を直しても同じ盤は同じ ID |
 | `row_id` | `R` ＋ 通し番号（`R1`）。配置図を作るたびに振り直す |
 
@@ -137,6 +138,9 @@ th 側の名前（`/measure/*`・`/map`・`/ui/active_screen`・`/safety/estop_u
 | `lift_state_stale_ms` | ms | 500 | 暫定（昇降部の配信は 100 ms（hve の仮値）。その 5 回分。hve も足りると確かめた） |
 | `lift_cmd_period_ms` | ms | 100 | 先方（hve の勧め。昇降部は 600 ms 命令が途切れると止まる） |
 | `lift_host` | — | `hve-lift.local` | 先方（hve の mDNS の名前）。引けなければ IP を設定で与える（直書きしない） |
+| `lift_port` | — | 80 | 先方（hve の昇降部の HTTP・WebSocket のポート。シミュレーションの偽物は 18080）。2026-11-24 ユーザー決定 |
+| `lift_lower_speed_mmps` | mm/s | 100 | 暫定（2026-11-24 ユーザー決定。昇降部の設定の下降の初期値と同じ。昇降部は設定の範囲に丸めない） |
+| `mechanism_bypass` | — | `true` | デモ特例 `W-1`（2026-11-14 ユーザー決定。測定機構を搭載するまで既定でバイパス。[-auto.md](DetailedDesign-auto.md) §2.3） |
 | `lift_drift_stop_mm` | mm | 50 | 暫定（[Spec-auto.md](../spec/Spec-auto.md) §4・`FK-V5`） |
 | `no_lower_move_max_m` | m | 0 | 暫定（`FK-V5`。毎回下げる） |
 | `lift_lower_timeout_s` | s | 60 | 暫定（下端まで下げきるのを待つ上限。超えたら `lift_not_lowered`） |

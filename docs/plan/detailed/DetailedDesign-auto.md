@@ -151,12 +151,71 @@
 | 実装で決めた細部（2026-11-23。WP-AUTO-10） | `order_back` は列に入っていない盤を 1 枚の列として扱い、列の中は幅の向きへの射影で並べる。`merge_back` は中心を正面の向きの軸だけ動かし、幅の向きの位置と幅は配置図のまま。結果は（盤, 側）で分けて持つ。`ArmPort.start_work` は側を受ける（既定 `front`） |
 | 盤前の作業に渡すもの | 盤と側。**どの点を測るかは測定機構の側が決める**（正面側: 中央と手前の 2 隅。`needs_back` が偽なら奥の 2 隅も。背面側: 奥の 2 隅＝機体から見て手前の 2 隅）。最初の版は測定機構なしなので渡さない |
 
-### 2.3 測定機構なしの道
+### 2.3 測定機構なしの道（2026-11-24 改め。WP-AUTO-07）
 
-昇降機の口が「測定機構が付いていない」を返す間は、`AT_PANEL` で作業を渡さず、結果を「飛ばした・`no_mechanism`」にする。
-腕の条件（格納位置にあるか）は満たしているとみなす（[Spec-auto.md](../spec/Spec-auto.md) §7）。**最初の版の結合試験（WP-AUTO-03）はこの道で 1 盤・複数盤を通す。**
+**入り口は本システムの設定 `mechanism_bypass`（既定 `true`）。**昇降機の口の「付いていない」では入らない（昇降部は「付いていない」を出さない。hve protocol-modules §3 の `attached` は `true` か `null`）。デモ特例 [EXCEPTION-LEDGER.md](../EXCEPTION-LEDGER.md) `W-1`。判定の箇所に `WAIVER(demo): W-1` のタグを置く。
+
+| `mechanism_bypass` | 振る舞い |
+| --- | --- |
+| `true`（既定） | 測定機構が付いていないものとして動く。`AT_PANEL` で作業を渡さず、結果を「飛ばした・`no_mechanism`」にする。腕の条件（格納位置にあるか・アームの制御器と通信できるか）は満たしているとみなす。**昇降機の高さが読めないときは今までどおり動く指示を出さない**（§4。腕の欄だけを外す） |
+| `false` | [Spec-auto.md](../spec/Spec-auto.md) §7 のとおり。**アームの制御器と通信できない（`arm_link_ok` が `True` でない）間は何も動かさない**（§4.1 の関門が腕の条件で止める。今の `mechanism_attached is False` の分岐は使わない） |
+
+- 起動時に値をログに出す。`AutoState` に今の値を出す（画面がバイパス中と示せるように。欄の名前は `mechanism_bypass`）。
+- 走っている間に設定を変えたときの扱いは持たない（起動時に読むだけ）。
+- `LiftStatus.mechanism_attached` は残すが、道の判定には使わない。
 
 ---
+
+### 2.7 本物の th とのずれを直す（2026-11-24。WP-AUTO-11）
+
+th の 8-g の受け手（th `feat/era3-measure` `41e253b0`）と偽の th を突き合わせて見つけたもの。正は th [DetailedDesign-measure.md](../../../../th-system/docs/plan/detailed/DetailedDesign-measure.md) §3・§6 と th Spec-measure §4.3。
+
+**本システムの直し**
+
+| 起きたこと | 本物の th | 本システムの振る舞い（直したあと） |
+| --- | --- | --- |
+| 非常停止・致命的な異常（自己位置を見失ったを含む） | **モードごと `ESTOP`（状態 `NONE`）へ移る。**測定の続きとして目的地を持ったまま結果を出さず、解除すると `AUTO_MEASURE`/`PAUSE` へ戻る | th のモードが `ESTOP` か `CARRY` の間は、**人が抜けたとはみなさない**（`IDLE` へ落ちない）。§2.2 の th が `PAUSE` の行と同じに `PAUSED` にする（原因は th。新しい理由の名前は足さない。th の様子は `AutoState` の th のモードで見える）。ss の依頼・昇降機の命令はやめる。**この間も `reentry_required` と `/measure/result` の `localization_lost` は見て `REENTRY` に移る**。解除後の th の `PAUSE` で人の「走行」を待つ |
+| 手押し | モードごと `CARRY` へ移る。ほかは非常停止と同じ | 同上 |
+| 人が自律測定を抜けた | `IDLE` | 今までどおり `IDLE`（モードが `AUTO_MEASURE`・`ESTOP`・`CARRY` のどれでもないとき） |
+| `command_id` の重複 | 終わった id も th が動いている間は覚えていて、`bad_argument` で拒否する | **`auto_runner` を起動するたびに変わる接頭辞を付ける**（[-names.md](DetailedDesign-names.md) §4 の `command_id`）。th を動かしたまま本システムを起動し直しても重ならない |
+
+割り込みの判定の順（§2.2）は「th が `IDLE` などへ抜けた → `IDLE`」「`HALTED`・`REENTRY` はそのまま」「入り直しが要る → `REENTRY`」「th が `ESTOP`・`CARRY`・`PAUSE` → `PAUSED`」の順。
+
+**偽の th（`FakeTh`・`fake_th`）の直し**（本物に合わせる。緑の試験が本物で崩れないように）
+
+| 項目 | 本物に合わせた振る舞い |
+| --- | --- |
+| 非常停止・手押し・見失い | 上の表のとおりモードを `ESTOP`／`CARRY` に移す。見失いは `ESTOP` ＋ 進行中の目的地を `CANCELLED`（`localization_lost`）＋ `reentry_required`。解除で `AUTO_MEASURE`/`PAUSE` |
+| 重複の id | 進行中・完了済みの id は `bad_argument` |
+| 拒否の順 | `meas.` 以外・空の id・未知の `meas.*` は、版・途絶より先に `bad_argument` |
+| 版の照合 | 版の合う受信が一度も無いときだけ `version_mismatch`。一度受けたあとは途絶の判定（`measure_link_lost`） |
+| `reentry_required` | goal（`WAIT`）・start（`PAUSE`）の行だけで見る。測定の続きを抜けたとき下ろす |
+| `meas.start` の戻り先 | 止める前が `NAV`・`BLOCKED` なら `NAV`、`ALIGN` なら `ALIGN`、ほかは `WAIT` |
+| `meas.reroute` | いったん `NAV` へ移す（塞がっていれば次の周期で `BLOCKED`） |
+| 自律測定への入り方 | `IDLE` からだけ |
+| 状態の配信 | **10 Hz の周期だけ**（指示の応答の中ですぐ配信しない）。応答と状態の届く順に頼る試験を作らない |
+
+- 結合試験に、非常停止→解除→「走行」で続きから進む・手押し・見失い（`ESTOP` を経て `REENTRY`）・起動し直しても id が重ならない、を足す。
+- 本物の th 相手の通し（Gazebo）は `WP-SIM-05`。
+
+### 2.8 昇降機の口の本物（`WsLiftPort`。2026-11-24。WP-AUTO-05）
+
+**名前と形の正は hve**: [DetailedDesign-protocol-modules.md](../../../../hve-system/docs/plan/detailed/DetailedDesign-protocol-modules.md) §1〜§4 とファーム `firmware/lift/lib/lift_core/cmd_codec.cpp`（hve `WP-LIFT-13`・`14`。main にマージ済み・実機未確認）。ここに写さない。2026-11-24 に hve main `b6aacf8` と照らした。
+
+| 項目 | 決まり |
+| --- | --- |
+| つなぎ先 | `ws://<lift_host>:<lift_port>/ws/module`。名前 `fk`・`role: control`・`operator: auto`・`ceiling_sensor: false` |
+| **送るもの** | **下げる（`hold` の `dir: down`・`speed` は `lift_lower_speed_mmps`）と止める（新しい `press` の `dir: stop` のあと `release`）だけ。上げる・`goto` は入れない**（実機の制限。CLAUDE.md。hve の知らせを待つ） |
+| 周期 | 下げている間 `lift_cmd_period_ms` ごとに送る（600 ms 途切れると昇降部が止める）。下端に着いたら `release` で離す |
+| **奪わない** | `state.owner` が無いか、持ち主の名前が `fk` のときだけ押す。人・ss・アームの制御器が持っている間は押さずに待つ（人のときは状態機械が §2.2 で `PAUSED` にする。ss のときは関門が ss の様子で止めている）。持ち主がいる間に `press` を増やさない |
+| `press` | 持ち主が無い間に下げ始めるときだけ増やす（同じ `press` は持ち主を失ったあと取り返せない）。数は接続ごと |
+| 状態の写し方（`LiftStatus`） | `at_bottom` ← `bottom`／`height_above_bottom_mm` ← `height_mm`（`height_ok` が偽なら `None`）／`origin_ok` ← `homed`／`operator_is_human` ← 持ち主の操作者が人なら `True`、自動か持ち主なしなら `False`／`arm_link_ok` ← `arm.link`／`arm_stowed` ← `arm.out` の否定（`null` なら `None`）／`mechanism_attached` ← `arm.attached`。**`state` が `lift_state_stale_ms` 届かない・つながっていないときは `status()` が `None`** |
+| 繋ぎ直し | `state` が `lift_state_stale_ms` 届かなければ自分で閉じ、`hello` からやり直す |
+| 実行器 | WebSocket は別スレッドで受け、最新の `state` だけを渡す（ROS 2 の実行器を塞がない） |
+| 起動 | `auto_runner` の本番の起動で `WsLiftPort` を作る |
+
+- **試験**: 写し方の純関数（JSON → `LiftStatus`）をホストで。結合は hve の偽物 `tools/fake_lift_server.py` を試験の中で起こして通す（下げる・下端・人の割り込み・ss が持っている間は押さない・偽物の再起動で繋ぎ直す）。**hve の偽物は下端を自分で立てない**ので、試験の側で高さが 0 になったら `POST /api/fake` で `bottom` を立てる（hve へ申し送る。[Spec-open.md](../spec/Spec-open.md) §1.2）。
+- 実機につなぐのは hve の知らせのあと。それまでも下げると止めるだけ。
 
 ## 3. 純関数（`fk_auto.core`）
 
@@ -240,7 +299,9 @@ th の 8-g（th 側の実装）が入ったら、`fake_th` との差を本物の
 | **WP-AUTO-02** 純関数 | §3・§4 の関数と試験 | — | ホストで全関数の試験が通る |
 | **WP-AUTO-03** 状態機械 | §2 を偽の口で。測定機構なしの道で 1 盤・複数盤・飛ばす・止める・一時停止・入り直し | 01・02 | `fake_th` 相手に、選んだ盤を回り切って結果の一覧が出る。**変異: 関門を通さずに送る道・表に無い指示を出す道・`drive_watch` の結果を捨てる道を作ると、試験が落ちる** |
 | **WP-AUTO-04** 画面 | 配置図と地図の表示・盤の選択と「開始」・「停止」「走行」「中止」「もう一度探す」「終了」（腕の確認つき）・結果の一覧・在席（S-60）・非常停止・ヘッダー。**詳しくは [-web.md](DetailedDesign-web.md)**（2026-11-12 案。お立会試験の `S-21` は測定機構の設計のあと）。**画面のほか `fk_msgs`（`AutoState`・`Layout` に欄を足す）・`runner`・`auto_runner`・`fk_sim`（試験用の起動）・Dockerfile（rosbridge）にも手を入れる** | 03 | ブラウザから `fake_th` 相手に一通り操作できる（[-web.md](DetailedDesign-web.md) §7） |
-| **WP-AUTO-05** 昇降機の口 | `LiftPort` の本物 | 01・**hve の実装が実機に入るまで** | 実機の昇降部で、状態を読み、下端まで下げられる |
+| **WP-AUTO-05** 昇降機の口 | §2.8（`WsLiftPort`） | 01・07（2026-11-24 ユーザー決定: hve の `WP-LIFT-14` 相手に今作る。実機は hve の知らせのあと） | hve の偽物相手に、状態を読み、下端まで下げられる。人・ss が持っている間は押さない |
+| **WP-AUTO-07** 測定機構なしの道を設定で入る | §2.3（`mechanism_bypass`・`WAIVER(demo): W-1`） | 03 | 既定で今までどおり回り切る。`false` ではアームの制御器と通信できない間なにも動かさない |
+| **WP-AUTO-11** 本物の th とのずれ | §2.7（`ESTOP`・`CARRY` で抜けない・`command_id` の接頭辞・偽の th を本物に合わせる） | 03 | 偽の th 相手に、非常停止・手押し・見失い・起動し直しの結合試験が通る |
 | **WP-AUTO-06** ss の口 | §2.5（`SsPort` の本物 `RosSsPort`・ss の型の取り込み・`depth_measured`・ROS 2 の偽の ss `fake_ss`） | 01・09（ss の型は ss `fa2593c` で版 3） | `fake_ss` 相手に ROS 2 を通して配置図ができる（本物の ss とは、ss が実機で動いてから） |
 | **WP-AUTO-10** 背面側への回り込み（2026-11-23） | §2.6・§3 の `needs_back`・`order_back`・`back_stand_pose`・`match_back`・`merge_back`。状態機械を訪問（盤と側）で回す。`fk_msgs` に側を足す（[-names.md](DetailedDesign-names.md) §4.1）。画面の結果の一覧に側を出す（[-web.md](DetailedDesign-web.md)。背面側が飛ばされたら「奥の 2 隅: 届かず」）。`fake_ss` に背中合わせの盤（奥行き 2 m・奥行きを測れていない盤）を足す | 03・06・**08**（`RECHECK` を同じく直すので、08 のあと） | 偽の th・偽の ss 相手に、奥行き 2 m の盤と奥行きを測れていない盤を選ぶと、正面側をすべて回ったあと背面側を回り、配置図の奥行きが直る。背面側へ行けない盤は背面側だけ飛ばされる。**変異: `needs_back` の結果を捨てる・背面側を正面側の途中に差し込む・`match_back` を正面側の照合に戻す、のどれでも試験が落ちる** |
 | **WP-AUTO-09** ss の口の版 2 | §2.4（後片付けの待ち方・理由 2 つ）を状態機械と偽の ss に入れる | 03 | 偽の ss 相手に、後片付けの上限が長い依頼でも止まらず、`camera_pose_unknown` で一時停止して「走行」で戻る |
