@@ -17,5 +17,7 @@ services:
       - ./th_ref:/root/fk_ws/th_ref
       - ./ss_import:/root/fk_ws/ss_import
       - ./ss_ref:/root/fk_ws/ss_ref
+      # WP-AUTO-05 の試験が hve の偽物（tools/fake_lift_server.py）を起こす。読み取り専用
+      - /home/yisahia787/code/MIRS-Local/TM/hve-system:/root/hve-system:ro
     stdin_open: true
     tty: true
