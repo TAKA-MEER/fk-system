@@ -200,6 +200,8 @@ def test_fake_ss_rejection_gives_ss_rejected_and_does_not_stall(make_ss_harness)
     h.enter_auto()
     begin(h)
     assert wait_until(lambda: h.phase == 'SELECT', LONG_S), h.state
+    assert wait_until(lambda: h.layouts and h.layouts[-1].survey_reason == 'ss_rejected', LONG_S), \
+        h.layouts[-1] if h.layouts else None
     assert h.layouts[-1].survey_reason == 'ss_rejected'
     assert h.layouts[-1].panels == []
     assert not h.errors
@@ -214,7 +216,7 @@ def test_foreign_cleanup_done_does_not_finish_the_request(make_ss_harness):
     h.publish_foreign_cleanup()
     time.sleep(1.0)
     assert h.phase == 'SURVEY'      # 終わったことになっていない
-    assert wait_until(lambda: h.phase == 'SELECT', LONG_S), h.state
+    assert wait_until(lambda: h.phase == 'SELECT' and len(ids_of(h)) == 1, LONG_S), h.state
     assert len(ids_of(h)) == 1
 
 

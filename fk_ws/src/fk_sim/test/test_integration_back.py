@@ -34,11 +34,10 @@ def test_deep_panel_back_after_all_front(make_ss_harness):
     assert wait_until(lambda: len(ids_of(h)) == 2 and h.phase == 'SELECT', LONG_S), h.state
     assert h.command('auto.start', ids=ids_of(h))[0]
     assert wait_until(lambda: h.phase == 'FINISH', LONG_S), h.state
-    rows = result_rows(h)
-    assert rows == [
+    assert wait_until(lambda: result_rows(h) == [
         ('P001', 'SKIPPED', 'no_mechanism', 'front'),
         ('P002', 'SKIPPED', 'no_mechanism', 'front'),
         ('P001', 'SKIPPED', 'no_mechanism', 'back'),
-    ], rows
+    ], LONG_S), result_rows(h)
     # 状態の側も背面側の訪問で back になる（FINISH では空に戻るので、結果の側で見る）
     assert not h.errors
