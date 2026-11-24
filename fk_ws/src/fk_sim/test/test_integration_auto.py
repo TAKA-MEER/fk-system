@@ -49,6 +49,32 @@ def test_mechanism_bypass_true_is_reported_and_flow_completes(make_harness):
     assert not h.errors
 
 
+def test_mechanism_bypass_false_blocks_everything_when_arm_link_is_lost(make_harness):
+    """parameter_overrides で mechanism_bypass=false の本番経路（auto_runner の _params）で起こし、
+    アームの制御器との通信が切れた状態で「開始」を送る。AutoState に false と出て、
+    th・昇降機・ss へ動く指示が 1 つも出ず、gate_reason が arm_link_lost になること。"""
+    h = make_harness(ports=True, panels=((3.0, 0.0),), fake_params=dict(nav_time_ms=300),
+                     runner_params=dict(mechanism_bypass=False))
+    assert wait_until(lambda: h.state is not None, MARGIN_S)
+    assert h.state.mechanism_bypass is False
+    h.enter_auto()
+    assert h.command('auto.begin')[0]
+    assert wait_until(lambda: len(ids_of(h)) == 1 and h.phase == 'SELECT', LONG_S)
+    assert h.state.mechanism_bypass is False
+    n_ss, n_lift, n_th = len(h.ss.requests), h.lift.lowers(), len(h.th_commands)
+    h.lift.arm_link_ok = False
+    assert h.command('auto.start', ids=ids_of(h))[0]
+    assert wait_until(lambda: h.gate_reason == 'arm_link_lost', LONG_S), h.state
+    import time
+    time.sleep(1.0)
+    assert h.state.mechanism_bypass is False
+    assert h.gate_reason == 'arm_link_lost'
+    assert len(h.th_commands) == n_th, h.th_commands
+    assert h.lift.lowers() == n_lift
+    assert len(h.ss.requests) == n_ss
+    assert not h.errors
+
+
 def test_f_without_lift_and_ss_ports_nothing_moves(make_harness):
     """(f) 口が無ければ動かない: meas.goal は届かず、gate_reason は state_unreadable。"""
     h = make_harness(ports=False)
