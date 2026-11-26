@@ -17,13 +17,14 @@ REPO = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))
 
 
 def test_stand_base_pose_computed():
-    # stand_pose: 0.389 + 0.5 = 0.889 m を正面の辺（中心から 0.5 m）からへ
+    # 期待値は stand_pose を通さずに数で書く（stand の計算を変えたらこの試験で気づく）:
+    # 北の面は中心から width/2 = 0.6 m（y=3.6）。立ち位置は 3.0 + 0.6 + 0.389 + 0.5 = 4.489。
     pose = appearance.stand_base_pose()
     assert pose["x"] == pytest.approx(3.0)
-    assert abs(pose["y"] - (3.0 + 0.5 + 0.389 + 0.5)) < 1e-9
+    assert pose["y"] == pytest.approx(4.489)
     assert pose["yaw"] == pytest.approx(-math.pi / 2.0)
-    # 記録の位置 (3.0, 4.66) と変換 0.27 m 食い違う（ブリーフどおり報告する差）
-    assert abs(appearance.RECORDED_POSE["y"] - pose["y"]) > 0.1
+    # 記録の位置 (3.0, 4.66) との差は 0.17 m（ブリーフどおり報告する差）
+    assert abs(appearance.RECORDED_POSE["y"] - pose["y"]) == pytest.approx(0.171)
 
 
 def test_scan_pitches_include_38_2():
@@ -45,16 +46,31 @@ def test_build_poses_center_yaw_and_pitch_sign():
     assert central, "中央ヨー 0 の姿勢が無い（P004 が画角の中央に入らない）"
     recorded = [p for p in poses if p["kind"] == "recorded"]
     assert recorded and recorded[0]["y"] == pytest.approx(4.66)
+    # ヨーの振り（下向き 38.2\u00b0 の段、\u221224〜+24\u00b0 の 6\u00b0 刻み）
+    for kind in ("sweep_stand", "sweep_recorded"):
+        sweep = [p for p in poses if p["kind"] == kind]
+        assert len(sweep) == 9, kind
+        assert [p["cam_yaw_deg"] for p in sweep] == [float(y) for y in range(-24, 25, 6)]
+        for p in sweep:
+            assert p["cam_pitch_deg"] == pytest.approx(-38.176, abs=0.5)
 
 
 def test_classify_lug_near_far():
-    robot = (3.0, 4.389)
+    robot = (3.0, 4.489)
     center = (3.0, 3.0)
     # 北側（正面側）の金具 2 個は近い、奥側（南側）の 2 個は遠い
     assert appearance.classify_lug((2.47, 3.57, 2.35), robot, center) == "near"
     assert appearance.classify_lug((3.53, 3.57, 2.35), robot, center) == "near"
     assert appearance.classify_lug((2.47, 2.43, 2.35), robot, center) == "far"
     assert appearance.classify_lug((3.53, 2.43, 2.35), robot, center) == "far"
+
+
+def test_edge_class_boundary():
+    # p01 の右の金具（1256, 427。縁から 24 px）は (a)、p02 の金具（958, 384。縁から 322 px）は (b)
+    assert appearance.edge_class((1256.0, 427.0)) == "a"
+    assert appearance.edge_class((958.0, 384.0)) == "b"
+    assert appearance.edge_margin_px((1256.0, 427.0)) == pytest.approx(24.0)
+    assert appearance.EDGE_RING_RADIUS_PX == 76.0
 
 
 def test_match_detections_tolerance():
@@ -78,6 +94,9 @@ def test_renderer_defaults_identical():
     sig = inspect.signature(core.Renderer.__init__)
     assert sig.parameters["metallic_factor"].default is None
     assert sig.parameters["roughness_factor"].default is None
+    # None のときに実際に材質へ入る値が今と同じ（0.0・0.7）であることを縛る
+    assert core.DEFAULT_METALLIC == 0.0
+    assert core.DEFAULT_ROUGHNESS == 0.7
 
 
 def test_build_scene_defaults_identical():

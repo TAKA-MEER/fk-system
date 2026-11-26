@@ -23,7 +23,9 @@ SS_REPO_DEFAULT = "C:/Users/yisah/Documents/code/MIRS-local/TM/ss-system"
 
 # P004（public_room.yaml）: 中心 (3.0, 3.0)・幅 1.2・奥行 1.0・高さ 2.35。
 # 盤前の認識し直しでは機体から見えた北側を正面とみなす（WP-SIM-10 の記録）ので、
-# fk_auto 側の front_yaw は北向き (pi/2)。正面の辺までの距離は奥行の半分 0.5 m。
+# fk_auto 側の front_yaw は北向き (pi/2)。幅は正面の辺に沿う長さなので北の面は中心から
+# width/2 = 0.6 m、正面の辺の長さは depth = 1.0 m。
+STAND_EXPECTED_Y = 4.489  # 3.0 + 0.6 + 0.389 + 0.5（数で書く。試験が縛る）
 PANEL = {"id": "P004", "x": 3.0, "y": 3.0, "width": 1.2, "depth": 1.0, "height": 2.35}
 FRONT_YAW_NORTH = math.pi / 2.0
 STAND_DISTANCE_MIN_M = 0.389
@@ -57,11 +59,17 @@ def _camera_K(ss_repo=SS_REPO_DEFAULT):
 
 
 def stand_base_pose():
-    """stand_pose の計算値（立ち位置の基準）。"""
+    """stand_pose の計算値（立ち位置の基準）。
+
+    P004 は正面が西（front_yaw \u03c0）で幅 1.2・奥行 1.0。幅は正面の辺に沿う長さなので
+    y 方向に 1.2 m、北の面は中心から 0.6 m（y=3.6）。北を正面とみなすなら
+    front_half_m = width/2 = 0.6、front_length_m = depth = 1.0。
+    立ち位置は y = 3.0 + 0.6 + 0.389 + 0.5 = 4.489。
+    """
     panel = Panel(panel_id=PANEL["id"], x=PANEL["x"], y=PANEL["y"],
                   front_yaw=FRONT_YAW_NORTH,
-                  front_half_m=PANEL["depth"] / 2.0,
-                  front_length_m=PANEL["width"])
+                  front_half_m=PANEL["width"] / 2.0,
+                  front_length_m=PANEL["depth"])
     pose = stand_pose(panel, STAND_DISTANCE_MIN_M, STAND_MARGIN_M)
     return {"x": pose.x, "y": pose.y, "yaw": pose.yaw}
 
@@ -79,9 +87,11 @@ def scan_pitches_deg(ss_repo=SS_REPO_DEFAULT):
 def build_poses(ss_repo=SS_REPO_DEFAULT):
     """描く姿勢の一覧。
 
-    位置: 計算の立ち位置を基準に ±0.1 m の 4 点と中心、記録の位置 (3.0, 4.66)。
-    ピッチ: ss の `scan_plan` の段（下向き度）。中心位置の中段だけヨー ±12° を足す。
-    ヨー: P004 が画角に入る中央（0°）。
+    位置: 計算の立ち位置を基準に \u00b10.1 m の 4 点と中心、記録の位置 (3.0, 4.66)。
+    ピッチ: ss の `scan_plan` の段（下向き度）。中心位置の中段だけヨー \u00b112\u00b0 を足す。
+    ヨー: P004 が画角に入る中央（0\u00b0）。
+    末尾に、計算の立ち位置と記録の位置で下向き 38.2\u00b0 の段のヨー −24〜+24\u00b0（6\u00b0 刻み）を
+    振った `sweep_stand` / `sweep_recorded` を足す（見逃し (b) が出る姿勢を増やすため）。
     """
     sp = load_scan_plan(ss_repo)
     K = _camera_K(ss_repo)
@@ -111,6 +121,21 @@ def build_poses(ss_repo=SS_REPO_DEFAULT):
                     "cam_yaw_deg": round(yaw, 3), "cam_pitch_deg": round(-pitch, 3),
                     "kind": pos["kind"],
                 })
+    # ヨーの振り（下向き 38.2\u00b0 の段 = pitches の中央。計算の立ち位置と記録の位置）
+    mid_pitch = pitches[len(pitches) // 2]
+    sweep_positions = [
+        {"x": base["x"], "y": base["y"], "yaw": base["yaw"], "kind": "sweep_stand"},
+        {"x": RECORDED_POSE["x"], "y": RECORDED_POSE["y"], "yaw": RECORDED_POSE["yaw"],
+         "kind": "sweep_recorded"},
+    ]
+    for pos in sweep_positions:
+        for yaw in range(-24, 25, 6):
+            poses.append({
+                "x": round(pos["x"], 4), "y": round(pos["y"], 4),
+                "yaw": round(pos["yaw"], 6), "height_m": LIFT_HEIGHT_M,
+                "cam_yaw_deg": float(yaw), "cam_pitch_deg": round(-mid_pitch, 3),
+                "kind": pos["kind"],
+            })
     return poses
 
 
@@ -119,6 +144,22 @@ def classify_lug(lug_xyz, robot_xy, panel_xy):
     def dist2(a, b):
         return (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2
     return "near" if dist2(lug_xyz, robot_xy) < dist2(panel_xy, robot_xy) else "far"
+
+
+# 見逃しの種類の境（リングの投影半径の目安。約 76 px）
+EDGE_RING_RADIUS_PX = 76.0
+
+
+def edge_class(uv, w=1280, h=720):
+    """見逃しの種類。(a) 縁で切れている（リング中心が縁から投影半径未満）、
+    (b) まるごと画面の中。"""
+    return "a" if edge_margin_px(uv, w, h) < EDGE_RING_RADIUS_PX else "b"
+
+
+def edge_margin_px(uv, w=1280, h=720):
+    """リング中心から画角の縁までの px（小さいほうが縁に近い）。"""
+    u, v = float(uv[0]), float(uv[1])
+    return min(u, w - u, v, h - v)
 
 
 def match_detections(gt_points, det_centers, tol_px=MATCH_TOL_PX):

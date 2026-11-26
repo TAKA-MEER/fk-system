@@ -26,6 +26,10 @@ WIDTH = 1280
 HEIGHT = 720
 # 歪みなしを描く幅（歪ませたときの写像先が収まるよう少し広げる）
 _RENDER_SCALE = 1.3
+# 材質の既定（従来の値。metallicFactor・roughnessFactor の None のときに実際に使う値）。
+# WP-SIM-11 の切り分け A はこの下敷きを Renderer の引数で上書きする。
+DEFAULT_METALLIC = 0.0
+DEFAULT_ROUGHNESS = 0.7
 
 
 def _ss_repo() -> str:
@@ -199,10 +203,10 @@ class Renderer:
         tm = trimesh.load(glb, force="scene")
         scene = pyrender.Scene.from_trimesh_scene(tm, bg_color=(0.8, 0.85, 0.9))
         # 金属は環境マップ無しだと真っ黒になるので、拡散寄りに描く（FK-E1 と同じ）。
-        # metallic_factor・roughness_factor が None のときは従来の既定（0.0・0.7）。
+        # metallic_factor・roughness_factor が None のときは従来の既定。
         # WP-SIM-11 の切り分け A で金具の艶だけ試すときに上書きする（既定は変えない）。
-        metal = 0.0 if metallic_factor is None else float(metallic_factor)
-        rough = 0.7 if roughness_factor is None else float(roughness_factor)
+        metal = DEFAULT_METALLIC if metallic_factor is None else float(metallic_factor)
+        rough = DEFAULT_ROUGHNESS if roughness_factor is None else float(roughness_factor)
         for m in scene.meshes:
             for prim in m.primitives:
                 mat = prim.material
