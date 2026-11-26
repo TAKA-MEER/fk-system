@@ -151,6 +151,8 @@ ROS 2・Docker の癖は 2026-11-11 に th-system から拾った（下）。ア
   - **rclpy の `declare_parameter` は既定値の型で決まり、params ファイルの整数と小数を変換しない**（既定値 `[]` は `BYTE_ARRAY` になる）。params.yaml の値の型をノードの宣言に揃える。
   - `ros2 node list` はデーモンのキャッシュで古いことがある（`--no-daemon` でも取りこぼす）。一覧に出ないだけで死んだと判断しない。`pkill -TERM -f "ros2 launch ..."` は launch の親しか殺さず、子ノードが残る。ノードを `kill -9` で落とし続けると DDS の発見が壊れる。
 - **ホストの pytest は、`~/.local` に入った anyio のプラグインが apt の古い pytest と合わず、起動の時点で `No module named '_pytest.scope'` で落ちる**（2026-11-11）。ホストで回すときは `python3 -B -m pytest -p no:cacheprovider -p no:anyio` にする。
+- **Windows で `fk_ws/sim/sim_up.sh` を回すと、`python3` が Microsoft Store のスタブに当たり、終了コード 49（出力は「Python」だけ）で落ちる**（2026-11-26）。本物の Python へ渡す `python3` のラッパーを PATH の先頭に置いて回す。
+- **sim の th の像（`fk-sim-stack/th:latest`）は `sim_up.sh` が作り直さない。**`th_sim_ref` を上げたら、`fk_ws/sim` で `docker build -t fk-sim-stack/th:latest -f th_Dockerfile .` を自分で回す（2026-11-26、古い像のまま起こして `measure_link`・`venue_navigator` が無く、`/measure/status` の出し手が 0 だった）。DeepAI の worktree で作った像は本体には残らない。
 - **`pkill -f <パターン>` は自分のシェルを殺すことがある**（パターンが自分のコマンドラインにマッチする。docker の中でもホストでも）。PID 指定で止める。
 - **今の昇降部のファームに `ceiling_sensor: false` で繋いで上昇させると、天井を見ずに上がる**（hve-system 2026-11-05。効くのは上端・下端・連続駆動の上限だけ）。hve の複数モジュール対応のパケットが入ったと知らせが来るまで、**本システムから昇降部へ繋いで試すときは下降と止めるだけにする。**
 - **th-system と同じ PC の別コンテナから th のトピックを購読すると、一覧には出るのに 0 件しか届かない**（th-system 2026-10-26。th 側の IPC が private で、FastDDS が共有メモリで送るため）。受ける側を UDP だけにする（th `th_ws/scripts/vibe_measure/fastdds_udp.xml` を `FASTRTPS_DEFAULT_PROFILES_FILE` で渡す）。**th の実機が動いている間に試験を回すと、同じ `ROS_DOMAIN_ID` で混線する**（th-system 2026-09-23）。試験はドメインを分ける（本システムは 78）。
