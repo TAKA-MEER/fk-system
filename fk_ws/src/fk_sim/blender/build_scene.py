@@ -2,6 +2,7 @@
 """シーンの記述から描画用の形（scene.glb）を Blender バッチで作る。
 
 使い方: blender -b -P build_scene.py -- --scene <記述.yaml> --out <出力先>
+  [--lug-rgb R,G,B] [--lug-rough 値] [--lug-metallic 値] [--blend scene.blend]
 scene.glb と、書き出し前に吐いたオブジェクトごとの外接箱
 (blender_objects.json) を出力先に書く。外接箱と scene.json の比べは
 生成器側（fk_sim.scene.answers.compare_blender_objects）がする。
@@ -35,6 +36,13 @@ def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument("--scene", required=True)
     p.add_argument("--out", required=True)
+    # 吊り金具（lug）の見た目だけを変える上書き（WP-SIM-11 の切り分け A 用）。
+    # 既定は従来の値と同じ（盤とほぼ同じ艶の無い灰色。メタリックなし）。
+    p.add_argument("--lug-rgb", default="0.6,0.6,0.62", help="金具の基本色 R,G,B")
+    p.add_argument("--lug-rough", type=float, default=0.4, help="金具の粗さ")
+    p.add_argument("--lug-metallic", type=float, default=0.0, help="金具のメタリック")
+    # Cycles で描くための .blend 保存先（無ければ保存しない）。
+    p.add_argument("--blend", default=None, help="保存する .blend のパス（任意）")
     return p.parse_args(argv)
 
 
@@ -88,12 +96,12 @@ def clear_scene():
     bpy.ops.object.delete()
 
 
-def make_material(name, rgb, rough=0.6):
+def make_material(name, rgb, rough=0.6, metallic=0.0):
     mat = bpy.data.materials.new(name)
     mat.use_nodes = True
     bsdf = mat.node_tree.nodes["Principled BSDF"]
     bsdf.inputs["Base Color"].default_value = (rgb[0], rgb[1], rgb[2], 1.0)
-    bsdf.inputs["Metallic"].default_value = 0.0
+    bsdf.inputs["Metallic"].default_value = metallic
     bsdf.inputs["Roughness"].default_value = rough
     return mat
 
@@ -155,7 +163,7 @@ def bounding_boxes():
     return out
 
 
-def build(desc):
+def build(desc, lug_rgb=(0.6, 0.6, 0.62), lug_rough=0.4, lug_metallic=0.0):
     room = desc["room"]
     lx, ly = float(room["size_x"]), float(room["size_y"])
     wall_h = float(room.get("wall_h", room["ceiling_h"]))
@@ -164,7 +172,7 @@ def build(desc):
     floor_mat = make_material("floor", room.get("floor_color", [0.55, 0.55, 0.55]))
     wall_mat = make_material("wall", room.get("wall_color", [0.8, 0.8, 0.78]))
     panel_mat = make_material("panel", [0.7, 0.7, 0.66])
-    lug_mat = make_material("lug", [0.6, 0.6, 0.62], rough=0.4)
+    lug_mat = make_material("lug", list(lug_rgb), rough=lug_rough, metallic=lug_metallic)
     obstacle_mat = make_material("obstacle", [0.4, 0.5, 0.6])
     plate_mat = make_material("plate", [0.9, 0.9, 0.88])
     robot_mat = make_material("robot", [0.3, 0.35, 0.4])
@@ -228,8 +236,11 @@ def main():
     out = os.path.abspath(args.out)
     os.makedirs(out, exist_ok=True)
     desc = load_description(args.scene, out)
+    lug_rgb = tuple(float(v) for v in args.lug_rgb.split(","))
+    if len(lug_rgb) != 3:
+        raise SystemExit("--lug-rgb は R,G,B の 3 つ")
     clear_scene()
-    build(desc)
+    build(desc, lug_rgb=lug_rgb, lug_rough=args.lug_rough, lug_metallic=args.lug_metallic)
     boxes = bounding_boxes()
     with open(os.path.join(out, "blender_objects.json"), "w", encoding="utf-8") as f:
         json.dump(boxes, f, ensure_ascii=False, indent=1)
@@ -241,6 +252,9 @@ def main():
         filepath=os.path.join(out, "scene.glb"),
         export_format="GLB", use_selection=True, export_yup=False, export_apply=True)
     print(f"[build_scene] {out} オブジェクト {len(boxes)} 個")
+    if args.blend:
+        bpy.ops.wm.save_as_mainfile(filepath=os.path.abspath(args.blend))
+        print(f"[build_scene] .blend を保存しました: {os.path.abspath(args.blend)}")
 
 
 if __name__ == "__main__":

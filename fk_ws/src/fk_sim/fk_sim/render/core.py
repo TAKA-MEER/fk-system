@@ -185,7 +185,9 @@ class Renderer:
 
     def __init__(self, scene_dir: str, camera=None,
                  dir_intensity: float = 0.6, ambient: float = 0.25,
-                 point_intensity: float = 6.0):
+                 point_intensity: float = 6.0,
+                 metallic_factor: float | None = None,
+                 roughness_factor: float | None = None):
         import pyrender
         import trimesh
 
@@ -196,13 +198,17 @@ class Renderer:
         glb = os.path.join(self._scene_dir, "scene.glb")
         tm = trimesh.load(glb, force="scene")
         scene = pyrender.Scene.from_trimesh_scene(tm, bg_color=(0.8, 0.85, 0.9))
-        # 金属は環境マップ無しだと真っ黒になるので、拡散寄りに描く（FK-E1 と同じ）
+        # 金属は環境マップ無しだと真っ黒になるので、拡散寄りに描く（FK-E1 と同じ）。
+        # metallic_factor・roughness_factor が None のときは従来の既定（0.0・0.7）。
+        # WP-SIM-11 の切り分け A で金具の艶だけ試すときに上書きする（既定は変えない）。
+        metal = 0.0 if metallic_factor is None else float(metallic_factor)
+        rough = 0.7 if roughness_factor is None else float(roughness_factor)
         for m in scene.meshes:
             for prim in m.primitives:
                 mat = prim.material
                 if isinstance(mat, pyrender.MetallicRoughnessMaterial):
-                    mat.metallicFactor = 0.0
-                    mat.roughnessFactor = 0.7
+                    mat.metallicFactor = metal
+                    mat.roughnessFactor = rough
         # 全体を照らす方向光源（斜め上から。FK-E1 と同じ）
         R = np.array([
             [0.866, -0.25, 0.433, 0.0],
