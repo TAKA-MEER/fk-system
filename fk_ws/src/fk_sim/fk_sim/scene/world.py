@@ -59,7 +59,7 @@ def build_world(scene):
         parts.append(_box_link(f"panel_{panel['id']}",
                                [panel["width"], panel["depth"], panel["height"]],
                                [cx, cy, panel["height"] / 2, 0, 0, model.panel_yaw(panel)],
-                               [0.7, 0.7, 0.66]))
+                               [0.88, 0.86, 0.78]))  # blender/build_scene.py の PANEL_RGB と同じ
     for i, ob in enumerate(scene["obstacles"]):
         cx, cy = ob["center"]
         parts.append(_box_link(f"obstacle_{i}", list(ob["size"]),

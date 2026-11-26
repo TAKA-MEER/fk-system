@@ -115,7 +115,11 @@ def test_build_scene_defaults_identical():
             for kw in node.keywords:
                 if kw.arg == "default":
                     defaults[name] = ast.literal_eval(kw.value)
-    assert defaults["--lug-rgb"] == "0.6,0.6,0.62"
+    # 金具の既定色は 2026-11-26 に実物の写真に合わせて変えた（LUG_RGB と同じ値であること）
+    lug_rgb = next(ast.literal_eval(n.value) for n in ast.walk(tree)
+                   if isinstance(n, ast.Assign) and getattr(n.targets[0], "id", None) == "LUG_RGB")
+    assert defaults["--lug-rgb"] == "0.72,0.72,0.66"
+    assert tuple(float(v) for v in defaults["--lug-rgb"].split(",")) == lug_rgb
     assert defaults["--lug-rough"] == 0.4
     assert defaults["--lug-metallic"] == 0.0
     assert defaults["--blend"] is None
