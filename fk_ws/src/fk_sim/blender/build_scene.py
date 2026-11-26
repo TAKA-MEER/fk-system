@@ -27,6 +27,10 @@ EB_SEAT_D, EB_SEAT_H = 0.0349, 0.015
 EB_RING_Z = (0.0164 + 0.0395 / 2 + 0.073 - 0.0723 / 2) / 2  # fk_sim.scene.model と同じ式
 HB, ROOF_T = 0.10, 0.025
 LUG_INSET = 0.07
+# 色（線形の基本色）。実物の盤（明るいアイボリー）と吊り金具（亜鉛めっきの銀灰色）の
+# 写真に、描画サービスの光源の既定で合わせた（2026-11-26）。world.py の盤の色も同じ値。
+PANEL_RGB = (0.88, 0.86, 0.78)
+LUG_RGB = (0.72, 0.72, 0.66)
 CORNERS = ("FL", "FR", "BL", "BR")
 
 
@@ -36,9 +40,8 @@ def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument("--scene", required=True)
     p.add_argument("--out", required=True)
-    # 吊り金具（lug）の見た目だけを変える上書き（WP-SIM-11 の切り分け A 用）。
-    # 既定は従来の値と同じ（盤とほぼ同じ艶の無い灰色。メタリックなし）。
-    p.add_argument("--lug-rgb", default="0.6,0.6,0.62", help="金具の基本色 R,G,B")
+    # 吊り金具（lug）の見た目だけを変える上書き（WP-SIM-11 の切り分け A 用）。既定は LUG_RGB。
+    p.add_argument("--lug-rgb", default="0.72,0.72,0.66", help="金具の基本色 R,G,B")
     p.add_argument("--lug-rough", type=float, default=0.4, help="金具の粗さ")
     p.add_argument("--lug-metallic", type=float, default=0.0, help="金具のメタリック")
     # Cycles で描くための .blend 保存先（無ければ保存しない）。
@@ -163,7 +166,7 @@ def bounding_boxes():
     return out
 
 
-def build(desc, lug_rgb=(0.6, 0.6, 0.62), lug_rough=0.4, lug_metallic=0.0):
+def build(desc, lug_rgb=LUG_RGB, lug_rough=0.4, lug_metallic=0.0):
     room = desc["room"]
     lx, ly = float(room["size_x"]), float(room["size_y"])
     wall_h = float(room.get("wall_h", room["ceiling_h"]))
@@ -171,7 +174,7 @@ def build(desc, lug_rgb=(0.6, 0.6, 0.62), lug_rough=0.4, lug_metallic=0.0):
     ceiling = float(room["ceiling_h"])
     floor_mat = make_material("floor", room.get("floor_color", [0.55, 0.55, 0.55]))
     wall_mat = make_material("wall", room.get("wall_color", [0.8, 0.8, 0.78]))
-    panel_mat = make_material("panel", [0.7, 0.7, 0.66])
+    panel_mat = make_material("panel", list(PANEL_RGB))
     lug_mat = make_material("lug", list(lug_rgb), rough=lug_rough, metallic=lug_metallic)
     obstacle_mat = make_material("obstacle", [0.4, 0.5, 0.6])
     plate_mat = make_material("plate", [0.9, 0.9, 0.88])
@@ -193,8 +196,9 @@ def build(desc, lug_rgb=(0.6, 0.6, 0.62), lug_rough=0.4, lug_metallic=0.0):
         body_h = h - HB - ROOF_T
         add_box(f"panel_{pid}_body", [w_in, d, body_h], [cx, cy, HB + body_h / 2], th, panel_mat)
         add_box(f"panel_{pid}_roof", [w_in, d + 0.012, ROOF_T], [cx, cy, h - ROOF_T / 2], th, panel_mat)
-        add_box(f"panel_{pid}_plate", [min(0.34, w_in - 0.1), 0.004, 0.075],
-                list(local_to_world(panel, 0, -d / 2 - 0.002)) + [h - 0.2], th, plate_mat)
+        # 名札は 1 mm の薄板（厚いと上面が上からの光で破線のように光り、金具と見誤られる）
+        add_box(f"panel_{pid}_plate", [min(0.34, w_in - 0.1), 0.001, 0.075],
+                list(local_to_world(panel, 0, -d / 2 - 0.0005)) + [h - 0.2], th, plate_mat)
         label = panel.get("label", "")
         if label:
             try:

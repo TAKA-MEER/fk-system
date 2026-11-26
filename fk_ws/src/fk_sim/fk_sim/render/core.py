@@ -39,6 +39,56 @@ def material_factors(metallic_factor, roughness_factor):
     return metal, rough
 
 
+# 光源の既定（2026-11-26。実物の盤と吊り金具の写真に合わせた）。天井の照明を思わせる
+# ほぼ真上からの主光源と、斜めからの弱い補助光、弱い環境光。色はわずかに暖色。
+# 天面が明るく正面が暗く、金具の上側が光り下側と内側が暗くなる（陰影が出る）。
+# 影は描かない（pyrender の影は部屋の天井で全部遮られ、外すと縞が出るため）。
+LIGHT_COLOR = (1.0, 0.98, 0.92)
+KEY_DIRECTION = (0.15, 0.3, -1.0)   # 光の進む向き（ワールド。下向き）
+KEY_INTENSITY = 2.4
+FILL_DIRECTION = (-0.5, 0.6, -0.4)
+FILL_INTENSITY = 0.6
+AMBIENT = 0.12
+# 実物のカメラの絵の柔らかさ（輪郭のぼけ）に合わせるぼかし（画素。0 で無し）
+BLUR_SIGMA_PX = 0.8
+
+
+def directional_light_pose(direction) -> np.ndarray:
+    """光の進む向き（ワールド）から pyrender の方向光源の姿勢を作る（光は局所 -Z へ進む）。"""
+    d = np.asarray(direction, dtype=float)
+    d = d / np.linalg.norm(d)
+    z = -d
+    up = np.array([0.0, 1.0, 0.0]) if abs(z[1]) < 0.9 else np.array([1.0, 0.0, 0.0])
+    x = np.cross(up, z)
+    x /= np.linalg.norm(x)
+    y = np.cross(z, x)
+    pose = np.eye(4)
+    pose[:3, 0], pose[:3, 1], pose[:3, 2] = x, y, z
+    return pose
+
+
+def gaussian_blur(img: np.ndarray, sigma: float) -> np.ndarray:
+    """縦横に分けたガウスぼかし（numpy だけ。端は端の画素を延ばす）。"""
+    if sigma <= 0:
+        return img
+    r = max(1, int(np.ceil(3 * sigma)))
+    k = np.exp(-0.5 * (np.arange(-r, r + 1) / sigma) ** 2)
+    k /= k.sum()
+    out = np.asarray(img, dtype=np.float64)
+    for axis in (0, 1):
+        pad = [(0, 0)] * out.ndim
+        pad[axis] = (r, r)
+        p = np.pad(out, pad, mode="edge")
+        acc = np.zeros_like(out)
+        n = out.shape[axis]
+        for i, w in enumerate(k):
+            sl = [slice(None)] * out.ndim
+            sl[axis] = slice(i, i + n)
+            acc += w * p[tuple(sl)]
+        out = acc
+    return out
+
+
 def _ss_repo() -> str:
     return os.environ.get("SS_REPO", "../ss-system")
 
@@ -195,7 +245,7 @@ class Renderer:
     """シーンの `.glb` を一度だけ読み込み、姿勢ごとに JPEG を返す。"""
 
     def __init__(self, scene_dir: str, camera=None,
-                 dir_intensity: float = 0.6, ambient: float = 0.25,
+                 dir_intensity: float = KEY_INTENSITY, ambient: float = AMBIENT,
                  point_intensity: float = 6.0,
                  metallic_factor: float | None = None,
                  roughness_factor: float | None = None):
@@ -218,14 +268,12 @@ class Renderer:
                 if isinstance(mat, pyrender.MetallicRoughnessMaterial):
                     mat.metallicFactor = metal
                     mat.roughnessFactor = rough
-        # 全体を照らす方向光源（斜め上から。FK-E1 と同じ）
-        R = np.array([
-            [0.866, -0.25, 0.433, 0.0],
-            [0.0, 0.866, 0.5, 0.0],
-            [-0.5, -0.433, 0.75, 0.0],
-            [0.0, 0.0, 0.0, 1.0],
-        ])
-        scene.add(pyrender.DirectionalLight(color=np.ones(3), intensity=dir_intensity), pose=R)
+        # 主光源（ほぼ真上）と補助光（斜め）。既定は上の KEY_*・FILL_*
+        color = np.array(LIGHT_COLOR, dtype=float)
+        scene.add(pyrender.DirectionalLight(color=color, intensity=dir_intensity),
+                  pose=directional_light_pose(KEY_DIRECTION))
+        scene.add(pyrender.DirectionalLight(color=color, intensity=FILL_INTENSITY),
+                  pose=directional_light_pose(FILL_DIRECTION))
         scene.ambient_light = np.array([ambient, ambient, ambient])
         # scene.json に照明の記載があれば、FK-E1 と同じ扱いで点光源を足す
         json_path = os.path.join(self._scene_dir, "scene.json")
@@ -282,6 +330,7 @@ class Renderer:
         self._renderer = pyrender.OffscreenRenderer(self._w2, self._h2)
         warped = _bilinear(color, self._map_u, self._map_v)
         warped = np.where(self._map_ok[..., None], warped, 0.0)
+        warped = gaussian_blur(warped, BLUR_SIGMA_PX)
         out = _post_noise_jpeg(np.clip(warped, 0.0, 255.0).astype(np.uint8), seed)
         self._cache[key] = out
         self.render_count += 1

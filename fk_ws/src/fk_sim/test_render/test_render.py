@@ -400,3 +400,65 @@ def test_default_camera_offsets_reach_rendering(tmp_path):
         f"既定カメラの横位置 {c1[0]:.1f}（期待 {expected_u:.1f}、yaw offset）"
     # 縦は中心付近（物の高さ = カメラの高さ。pitch offset 0.3° で数 px 動く）
     assert abs(c1[1] - cy) < 20.0, f"既定カメラの縦位置 {c1[1]:.1f}（高さの差の誤り）"
+
+
+def _white_box_scene(tmp_path):
+    """機体の正面 3 m に 1 m の明るい灰色の箱（天面と正面が写る）。"""
+    from trimesh.visual.material import PBRMaterial
+
+    d = str(tmp_path / "box")
+    os.makedirs(d, exist_ok=True)
+    m = trimesh.creation.box(extents=[1.0, 1.0, 1.0])
+    m.apply_translation([3.0, 0.0, 0.5])
+    m.visual = trimesh.visual.TextureVisuals(
+        uv=np.zeros((len(m.vertices), 2)),
+        material=PBRMaterial(baseColorFactor=[0.85, 0.85, 0.85, 1.0]))
+    trimesh.Scene([m]).export(os.path.join(d, "scene.glb"))
+    with open(os.path.join(d, "scene.json"), "w", encoding="utf-8") as f:
+        f.write("{}")
+    return d
+
+
+def _gray_patch(jpg, cam, pose, point):
+    from PIL import Image
+
+    img = np.asarray(Image.open(io.BytesIO(jpg)).convert("L")).astype(float)
+    T = world_to_camera_T(pose["x"], pose["y"], pose["yaw"], pose["height_m"],
+                          pose["cam_yaw_deg"], pose["cam_pitch_deg"], camera=cam)
+    uv, ok = _geometry().project(np.array([point], float), cam["K"], cam["dist"], T, w=1280, h=720)
+    assert bool(ok[0])
+    u, v = (int(round(c)) for c in uv[0])
+    assert 4 <= u < 1276 and 4 <= v < 716
+    return img[v - 4:v + 5, u - 4:u + 5].mean()
+
+
+def test_lighting_top_bright_and_front_darker(tmp_path):
+    """光源の既定（2026-11-26。実物の写真に合わせた）: 天井の照明のように上から照らし、
+    天面は明るく、正面はそれより暗い。前の既定（斜めの弱い方向光＋強い環境光）では
+    天面が 153・差が 26 で、この条件に届かない。"""
+    cam = _zero_camera()
+    pose = dict(x=0.0, y=0.0, yaw=0.0, height_m=1.6, cam_yaw_deg=0.0, cam_pitch_deg=-25.0)
+    d = _white_box_scene(tmp_path)
+    jpg = _render(d, cam, **pose)
+    top = _gray_patch(jpg, cam, pose, [2.7, 0.0, 1.0])
+    front = _gray_patch(jpg, cam, pose, [2.5, 0.0, 0.75])
+    assert top > 200
+    assert top - front > 35
+
+
+def test_render_applies_blur(renderer_and_box, monkeypatch):
+    """本番の render() が後処理の前に実物のカメラに合わせたぼかしを掛ける。"""
+    from fk_sim.render import core
+
+    calls = []
+
+    def spy(img, sigma):
+        calls.append(sigma)
+        return img
+
+    monkeypatch.setattr(core, "gaussian_blur", spy)
+    r, _T, _c, pose, _o = renderer_and_box
+    r.render(pose["x"] + 0.01, pose["y"], pose["yaw"], pose["height_m"],
+             pose["cam_yaw_deg"], pose["cam_pitch_deg"], seed=7)
+    assert calls == [core.BLUR_SIGMA_PX]
+    assert core.BLUR_SIGMA_PX > 0
