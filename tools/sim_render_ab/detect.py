@@ -64,6 +64,7 @@ def main():
     for variant in variants:
         vdir = os.path.join(args.frames_root, variant)
         agg = defaultdict(lambda: {"found": 0, "total": 0})
+        per_lug = {}  # (姿勢番号, 金具) -> {uv, margin, edge, frames, found}
         frames = 0
         frames_all = 0
         false_list = []
@@ -77,7 +78,7 @@ def main():
                     np.array(lug["ring_center"]).reshape(1, 3),
                     cam["K"], cam["dist"], T_wc, w=1280, h=720)
                 if bool(ok[0]):
-                    gt.append((uv[0], appearance.classify_lug(
+                    gt.append((corner, uv[0], appearance.classify_lug(
                         lug["ring_center"], (p["x"], p["y"]), panel_xy)))
             for seed in appearance.SEEDS:
                 path = os.path.join(vdir, f"p{i:02d}_s{seed:02d}.jpg")
@@ -88,19 +89,31 @@ def main():
                     continue
                 keypoints, _confs = detector.detect(img)
                 centers = keypoints.mean(axis=1) if len(keypoints) else np.zeros((0, 2))
-                results, false = appearance.match_detections([g[0] for g in gt], centers)
+                results, false = appearance.match_detections([g[1] for g in gt], centers)
                 frames += 1
                 false_list.append(false)
                 all_found = True
-                for (uv, side), res in zip(gt, results):
+                for (corner, uv, side), res in zip(gt, results):
                     agg[side]["total"] += 1
+                    key = (i, corner)
+                    row = per_lug.setdefault(key, {
+                        "pose": i, "kind": p.get("kind"), "corner": corner,
+                        "side": side, "uv": [round(float(uv[0]), 1), round(float(uv[1]), 1)],
+                        "margin_px": round(appearance.edge_margin_px(uv), 1),
+                        "edge": appearance.edge_class(uv),
+                        "frames": 0, "found": 0})
+                    row["frames"] += 1
                     if res["found"]:
                         agg[side]["found"] += 1
+                        row["found"] += 1
                         errors.append(res["err_px"])
                     else:
                         all_found = False
                 if all_found and gt:
                     frames_all += 1
+        # 見逃しの (a)(b) の内訳（金具×種の見逃し数）
+        miss_a = sum(r["frames"] - r["found"] for r in per_lug.values() if r["edge"] == "a")
+        miss_b = sum(r["frames"] - r["found"] for r in per_lug.values() if r["edge"] == "b")
         times_path = os.path.join(vdir, "times.json")
         render_median = None
         if os.path.isfile(times_path):
@@ -115,6 +128,8 @@ def main():
             "false_per_frame": float(np.mean(false_list)) if false_list else None,
             "error_px_median": float(np.median(errors)) if errors else None,
             "render_median_s": render_median,
+            "misses_edge_a": miss_a, "misses_inside_b": miss_b,
+            "per_lug": sorted(per_lug.values(), key=lambda r: (r["pose"], r["corner"])),
         }
     out_path = args.out or os.path.join(args.frames_root, "report.json")
     with open(out_path, "w", encoding="utf-8") as f:
