@@ -94,9 +94,15 @@ def test_renderer_defaults_identical():
     sig = inspect.signature(core.Renderer.__init__)
     assert sig.parameters["metallic_factor"].default is None
     assert sig.parameters["roughness_factor"].default is None
-    # None のときに実際に材質へ入る値が今と同じ（0.0・0.7）であることを縛る
-    assert core.DEFAULT_METALLIC == 0.0
-    assert core.DEFAULT_ROUGHNESS == 0.7
+    # None のときに実際に材質へ入る値が今と同じ（0.0・0.7）であることを数で確かめる
+    assert core.material_factors(None, None) == (0.0, 0.7)
+    assert core.material_factors(0.0, 0.15) == (0.0, 0.15)
+    assert core.material_factors(None, 0.15) == (0.0, 0.15)
+    assert core.material_factors(0.5, None) == (0.5, 0.7)
+    # 呼び出し側（__init__）がこの関数を通ることも縛る
+    src = open(os.path.join(REPO, "fk_ws", "src", "fk_sim", "fk_sim", "render",
+                            "core.py"), encoding="utf-8").read()
+    assert "metal, rough = material_factors(metallic_factor, roughness_factor)" in src
 
 
 def test_build_scene_defaults_identical():
