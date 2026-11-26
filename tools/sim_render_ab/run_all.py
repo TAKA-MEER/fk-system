@@ -85,8 +85,9 @@ def main():
         docker_run(cmd)
 
     if not args.skip_cycles:
-        # Cycles: center と recorded の姿勢（6 姿勢）だけ
-        cycle_poses = [p for p in poses if p["kind"] in ("center", "recorded")]
+        # Cycles: center・recorded とヨーの振り（sweep）の姿勢だけ
+        cycle_kinds = ("center", "recorded", "sweep_stand", "sweep_recorded")
+        cycle_poses = [p for p in poses if p["kind"] in cycle_kinds]
         cycle_poses_path = os.path.join(OUT_ROOT, "poses_cycles.json")
         with open(cycle_poses_path, "w", encoding="utf-8") as f:
             json.dump(cycle_poses, f, indent=1)
